@@ -173,24 +173,21 @@ class MockMarketDataProvider implements MarketDataProvider {
 class MultiSourceLiveMarketDataProvider implements MarketDataProvider {
   async runScan(request: ScanRequest): Promise<ScanResult[]> {
     try {
-      const res = await fetch('/api/live-scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ request }),
+      // Import Supabase client dynamically to avoid circular dependencies
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      const { data, error } = await supabase.functions.invoke('live-scan', {
+        body: { request },
       });
 
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(
-          `Live scan failed with status ${res.status}: ${res.statusText}. ${errorText}`
-        );
+      if (error) {
+        throw new Error(`Live scan failed: ${error.message}`);
       }
 
-      const json = await res.json();
-      const results = json.results as ScanResult[];
+      const results = data?.results as ScanResult[];
       
       if (!Array.isArray(results)) {
-        throw new Error('Invalid response from live scan API - expected results array');
+        throw new Error('Invalid response from live scan function - expected results array');
       }
 
       return results;
@@ -198,7 +195,7 @@ class MultiSourceLiveMarketDataProvider implements MarketDataProvider {
       console.error('MultiSourceLiveMarketDataProvider.runScan error:', err);
       throw new Error(
         `Live data provider failed: ${err instanceof Error ? err.message : 'Unknown error'}. ` +
-        'Check that the API route is configured and API keys (FINNHUB_API_KEY) are set.'
+        'Check that Lovable Cloud is configured and API keys (FINNHUB_API_KEY) are set.'
       );
     }
   }
