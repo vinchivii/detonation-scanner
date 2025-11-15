@@ -5,8 +5,8 @@
  * into a common format that can be merged and scored.
  */
 
-// TODO: Add more sources as they are integrated (polygon, iex, alpaca, etc.)
-export type QuoteSource = 'finnhub' | 'polygon' | 'iex' | 'mock';
+// TODO: Add more sources as they are integrated (massive/polygon, iex, alpaca, etc.)
+export type QuoteSource = 'finnhub' | 'massive' | 'iex' | 'mock';
 
 /**
  * Normalized quote data from any market data source
