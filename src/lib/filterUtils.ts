@@ -20,6 +20,7 @@ export function normalizeFilters(filters: ScanFilters): ScanFilters {
     maxPrice: filters.maxPrice ?? undefined,
     minVolume: filters.minVolume ?? undefined,
     sectors: filters.sectors ?? [],
+    highVolatilityOnly: filters.highVolatilityOnly ?? false,
   };
 
   // If both min and max exist and min > max, swap them to avoid invalid ranges
@@ -56,8 +57,9 @@ export function buildFiltersSummary(filters: ScanFilters): string {
     : `${f.minVolume}+`;
   
   const sectorsLabel = !f.sectors.length ? 'All' : f.sectors.join(', ');
+  const highVolLabel = f.highVolatilityOnly ? ' | High Vol' : '';
 
-  return `Cap: ${capLabel} | Price: ${priceLabel} | Vol: ${volLabel} | Sectors: ${sectorsLabel}`;
+  return `Cap: ${capLabel} | Price: ${priceLabel} | Vol: ${volLabel} | Sectors: ${sectorsLabel}${highVolLabel}`;
 }
 
 /**

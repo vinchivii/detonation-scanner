@@ -1,13 +1,13 @@
-import { ScanMode, ScanFilters, SECTORS, SCAN_MODE_DESCRIPTIONS, MarketCapRange } from '@/lib/types';
+import { ScanFilters, SECTORS, MarketCapRange } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Search, X, Save } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Search, X, Save, TrendingUp } from 'lucide-react';
 
 interface ScanControlsProps {
-  mode: ScanMode;
   filters: ScanFilters;
   onFiltersChange: (filters: ScanFilters) => void;
   onRunScan: () => void;
@@ -24,7 +24,6 @@ const MARKET_CAP_OPTIONS: { value: MarketCapRange; label: string }[] = [
 ];
 
 export function ScanControls({
-  mode,
   filters,
   onFiltersChange,
   onRunScan,
@@ -45,12 +44,12 @@ export function ScanControls({
   return (
     <Card className="p-6">
       <div className="space-y-6">
-        {/* Mode Description & Save Button */}
+        {/* Header with Save Button */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-foreground mb-2">Current Scan Mode</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Scan Filters</h3>
             <p className="text-sm text-muted-foreground">
-              {SCAN_MODE_DESCRIPTIONS[mode]}
+              Configure filters to find high-potential stocks matching your criteria
             </p>
           </div>
           <Button
@@ -163,6 +162,28 @@ export function ScanControls({
             }
             placeholder="No minimum"
             className="bg-background"
+          />
+        </div>
+
+        {/* High Volatility Filter */}
+        <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-muted/30">
+          <div className="flex-1 pr-4">
+            <div className="flex items-center gap-2 mb-1">
+              <TrendingUp className="w-4 h-4 text-primary" />
+              <Label htmlFor="highVolatility" className="text-sm font-semibold cursor-pointer">
+                High Volatility Only
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Show only stocks with large recent price moves (≥5% daily change)
+            </p>
+          </div>
+          <Switch
+            id="highVolatility"
+            checked={filters.highVolatilityOnly ?? false}
+            onCheckedChange={(checked) => 
+              onFiltersChange({ ...filters, highVolatilityOnly: checked })
+            }
           />
         </div>
 

@@ -18,11 +18,11 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 // TYPE DEFINITIONS
 // ============================================================================
 
-type ScanMode = 'daily-volatility' | 'catalyst-hunter' | 'cmbm-style' | 'momentum';
+type ScanMode = 'unified';
 type MomentumGrade = 'A' | 'B' | 'C' | 'D';
 type Sentiment = 'Long' | 'Short' | 'Neutral';
 type RiskLevel = 'Low' | 'Medium' | 'High';
-type MarketCapRange = 'micro' | 'small' | 'mid' | 'any';
+type MarketCapRange = 'micro' | 'small' | 'mid' | 'large' | 'any';
 type QuoteSource = 'finnhub' | 'massive' | 'iex' | 'alphavantage';
 
 interface ScoreBreakdown {
@@ -38,6 +38,7 @@ interface ScanFilters {
   maxPrice?: number;
   minVolume?: number;
   sectors: string[];
+  highVolatilityOnly?: boolean;
 }
 
 interface ScanRequest {
@@ -645,16 +646,8 @@ const TICKER_UNIVERSE: TickerMeta[] = [
 ];
 
 function buildLiveUniverse(request: ScanRequest): TickerMeta[] {
-  const { mode, filters } = request;
+  const { filters } = request;
   let pool = TICKER_UNIVERSE;
-
-  if (mode === 'cmbm-style') {
-    pool = pool.filter(meta => meta.capBucket === 'micro' || meta.capBucket === 'small');
-  } else if (mode === 'momentum') {
-    pool = pool.filter(meta => ['Technology', 'Crypto', 'ETF'].includes(meta.sector));
-  } else if (mode === 'catalyst-hunter') {
-    pool = pool.filter(meta => meta.capBucket !== 'large' || meta.sector !== 'ETF');
-  }
 
   if (filters.marketCap !== 'any') {
     pool = pool.filter(meta => meta.capBucket === filters.marketCap);
@@ -726,19 +719,13 @@ function mergeFundamentals(snapshots: FundamentalSnapshot[]): FundamentalSnapsho
 // SCORING LOGIC
 // ============================================================================
 
-function deriveScoreBreakdown(changePercent: number, volume: number | null, mode: ScanMode): ScoreBreakdown {
+function deriveScoreBreakdown(changePercent: number, volume: number | null): ScoreBreakdown {
   const absChange = Math.abs(changePercent);
   const volFactor = volume && volume > 1_000_000 ? 1 : 0.7;
 
   let momentum = Math.min(100, absChange * 5 * volFactor);
-  let structure = Math.max(30, Math.min(95, momentum + (mode === 'momentum' ? 5 : 0)));
+  let structure = Math.max(30, Math.min(95, momentum));
   let catalysts = Math.max(10, Math.min(90, momentum - 5));
-
-  if (mode === 'catalyst-hunter') {
-    catalysts = Math.min(100, catalysts + 15);
-  } else if (mode === 'cmbm-style') {
-    structure = Math.min(100, structure + 10);
-  }
 
   const sentimentScore = changePercent >= 0 ? 60 + absChange : 40 - absChange;
 
@@ -750,7 +737,7 @@ function deriveScoreBreakdown(changePercent: number, volume: number | null, mode
   };
 }
 
-function deriveLabels(changePercent: number, mode: ScanMode): { momentumGrade: MomentumGrade; sentiment: Sentiment; riskLevel: RiskLevel } {
+function deriveLabels(changePercent: number): { momentumGrade: MomentumGrade; sentiment: Sentiment; riskLevel: RiskLevel } {
   const absChange = Math.abs(changePercent);
   let momentumGrade: MomentumGrade = 'D';
   if (absChange > 15) momentumGrade = 'A';
@@ -763,26 +750,19 @@ function deriveLabels(changePercent: number, mode: ScanMode): { momentumGrade: M
   if (absChange > 12) riskLevel = 'High';
   else if (absChange > 5) riskLevel = 'Medium';
 
-  if (mode === 'cmbm-style' && riskLevel !== 'High') {
-    riskLevel = 'Medium';
-  }
-
   return { momentumGrade, sentiment, riskLevel };
 }
 
-function deriveExplosivePotential(score: ScoreBreakdown, mode: ScanMode): number {
+function deriveExplosivePotential(score: ScoreBreakdown): number {
   const base = (score.momentum * 0.4) + (score.structure * 0.3) + (score.catalysts * 0.2) + (score.sentiment * 0.1);
-  let adjusted = base;
-  if (mode === 'cmbm-style') adjusted += 10;
-  return Math.max(0, Math.min(100, Math.round(adjusted)));
+  return Math.max(0, Math.min(100, Math.round(base)));
 }
 
 function deriveTags(
   changePercent: number,
   volume: number | null,
   metaSector: string,
-  capBucket: 'micro' | 'small' | 'mid' | 'large',
-  mode: ScanMode
+  capBucket: 'micro' | 'small' | 'mid' | 'large'
 ): string[] {
   const tags: string[] = [];
   const absChange = Math.abs(changePercent);
@@ -793,10 +773,6 @@ function deriveTags(
   if (absChange > 10) tags.push('High Volatility');
   if (absChange > 20) tags.push('Parabolic Risk');
   if (volume && volume > 5_000_000) tags.push('High Volume');
-
-  if (mode === 'cmbm-style') tags.push('CMBM-Style Candidate');
-  if (mode === 'momentum') tags.push('Momentum Scan');
-  if (mode === 'catalyst-hunter') tags.push('Catalyst Focus');
 
   return Array.from(new Set(tags));
 }
@@ -960,10 +936,10 @@ serve(async (req) => {
       const fundamentals = mergedFundamentals.get(meta.symbol);
       const news = newsByTicker.get(meta.symbol) || [];
 
-      const scoreBreakdown = deriveScoreBreakdown(changePercent, quote.volume, request.mode);
-      const { momentumGrade, sentiment, riskLevel } = deriveLabels(changePercent, request.mode);
-      const explosivePotential = deriveExplosivePotential(scoreBreakdown, request.mode);
-      const baseTags = deriveTags(changePercent, quote.volume, meta.sector, meta.capBucket, request.mode);
+      const scoreBreakdown = deriveScoreBreakdown(changePercent, quote.volume);
+      const { momentumGrade, sentiment, riskLevel } = deriveLabels(changePercent);
+      const explosivePotential = deriveExplosivePotential(scoreBreakdown);
+      const baseTags = deriveTags(changePercent, quote.volume, meta.sector, meta.capBucket);
 
       const { catalystSummary, primary, catalystTags } = buildCatalystFromNews(news);
       const finalTags = Array.from(new Set([...baseTags, ...catalystTags]));
@@ -981,7 +957,7 @@ serve(async (req) => {
         marketCap,
         float,
         sector,
-        scanMode: request.mode,
+        scanMode: 'unified',
         catalystSummary,
         momentumGrade,
         explosivePotential,

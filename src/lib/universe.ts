@@ -81,31 +81,14 @@ function matchesSector(filters: ScanFilters, meta: TickerMeta): boolean {
 }
 
 /**
- * Build the live ticker universe based on scan mode and filters
+ * Build the live ticker universe based on filters
  * 
- * @param request - The scan request with mode and filters
+ * @param request - The scan request with filters
  * @returns Array of TickerMeta objects representing the universe to scan
  */
 export function buildLiveUniverse(request: ScanRequest): TickerMeta[] {
-  const { mode, filters } = request;
+  const { filters } = request;
   let pool = TICKER_UNIVERSE;
-
-  // Mode-based emphasis
-  if (mode === 'cmbm-style') {
-    // CMBM-style focuses on micro and small caps with high squeeze potential
-    pool = pool.filter(meta => meta.capBucket === 'micro' || meta.capBucket === 'small');
-  } else if (mode === 'momentum') {
-    // Momentum scans favor tech, crypto, and leveraged ETFs
-    pool = pool.filter(meta => 
-      ['Technology', 'Crypto', 'ETF'].includes(meta.sector)
-    );
-  } else if (mode === 'catalyst-hunter') {
-    // Catalyst hunter: broader sectors, exclude large-cap ETFs
-    pool = pool.filter(meta => 
-      !(meta.capBucket === 'large' && meta.sector === 'ETF')
-    );
-  }
-  // daily-volatility gets full universe
 
   // Apply user filters
   pool = pool.filter(meta => 

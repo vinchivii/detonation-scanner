@@ -46,41 +46,17 @@ class MockMarketDataProvider implements MarketDataProvider {
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
-  private generateScoreBreakdown(mode: ScanMode): ScoreBreakdown {
-    switch (mode) {
-      case 'catalyst-hunter':
-        return {
-          catalysts: this.randomInRange(70, 95),
-          momentum: this.randomInRange(40, 70),
-          structure: this.randomInRange(50, 75),
-          sentiment: this.randomInRange(55, 80),
-        };
-      case 'momentum':
-        return {
-          catalysts: this.randomInRange(30, 60),
-          momentum: this.randomInRange(75, 95),
-          structure: this.randomInRange(65, 85),
-          sentiment: this.randomInRange(60, 80),
-        };
-      case 'cmbm-style':
-        return {
-          catalysts: this.randomInRange(60, 85),
-          momentum: this.randomInRange(70, 90),
-          structure: this.randomInRange(80, 98),
-          sentiment: this.randomInRange(65, 90),
-        };
-      default:
-        return {
-          catalysts: this.randomInRange(40, 70),
-          momentum: this.randomInRange(50, 80),
-          structure: this.randomInRange(45, 75),
-          sentiment: this.randomInRange(40, 70),
-        };
-    }
+  private generateScoreBreakdown(): ScoreBreakdown {
+    return {
+      catalysts: this.randomInRange(40, 85),
+      momentum: this.randomInRange(50, 90),
+      structure: this.randomInRange(45, 85),
+      sentiment: this.randomInRange(40, 80),
+    };
   }
 
-  private generateMockResult(mode: ScanMode, company: typeof this.MOCK_COMPANIES[0]): ScanResult {
-    const scoreBreakdown = this.generateScoreBreakdown(mode);
+  private generateMockResult(company: typeof this.MOCK_COMPANIES[0]): ScanResult {
+    const scoreBreakdown = this.generateScoreBreakdown();
     const explosivePotential = Math.round(
       scoreBreakdown.catalysts * 0.3 +
       scoreBreakdown.momentum * 0.25 +
@@ -89,14 +65,14 @@ class MockMarketDataProvider implements MarketDataProvider {
     );
 
     const riskLevel: RiskLevel =
-      mode === 'cmbm-style' || explosivePotential > 80
+      explosivePotential > 80
         ? Math.random() > 0.3 ? 'High' : 'Medium'
         : explosivePotential < 50 ? 'Low' : 'Medium';
 
-    const basePrice = mode === 'cmbm-style' ? this.randomInRange(2, 25) : this.randomInRange(10, 180);
-    const changePercent = mode === 'momentum' ? this.randomInRange(2, 18) : this.randomInRange(-12, 22);
+    const basePrice = this.randomInRange(10, 180);
+    const changePercent = this.randomInRange(-12, 22);
     const volume = this.randomInRange(1000000, 15000000);
-    const float = mode === 'cmbm-style' ? this.randomInRange(5000000, 20000000) : this.randomInRange(20000000, 150000000);
+    const float = this.randomInRange(20000000, 150000000);
     const momentumGrade = this.randomPick(['A', 'B', 'C']) as MomentumGrade;
     const sentiment: Sentiment = changePercent > 0 ? 'Long' : Math.random() > 0.7 ? 'Neutral' : 'Short';
 
@@ -109,7 +85,7 @@ class MockMarketDataProvider implements MarketDataProvider {
       marketCap: Math.round(basePrice * float),
       float: Math.round(float),
       sector: company.sector,
-      scanMode: mode,
+      scanMode: 'unified',
       catalystSummary: `${company.ticker} showing strong setup with upcoming catalyst events and momentum buildup`,
       momentumGrade,
       explosivePotential,
@@ -127,15 +103,8 @@ class MockMarketDataProvider implements MarketDataProvider {
           : riskLevel === 'Medium'
           ? 'Moderate risk, standard management applies'
           : 'Lower risk, suitable for larger positions',
-      whyItMightMove: `Strong ${mode} setup with ${explosivePotential} explosive potential score`,
-      tags:
-        mode === 'catalyst-hunter'
-          ? ['Catalyst', 'Event Driven']
-          : mode === 'momentum'
-          ? ['Momentum', 'Breakout']
-          : mode === 'cmbm-style'
-          ? ['Low Float', 'Squeeze']
-          : ['Volatility', 'Day Trade'],
+      whyItMightMove: `Strong setup with ${explosivePotential} explosive potential score`,
+      tags: ['Volatility', 'Day Trade'],
     };
   }
 
@@ -150,7 +119,7 @@ class MockMarketDataProvider implements MarketDataProvider {
         : shuffled;
     const companies = filtered.length < 8 ? shuffled.slice(0, 12) : filtered.slice(0, 12);
 
-    let results = companies.map(c => this.generateMockResult(request.mode, c));
+    let results = companies.map(c => this.generateMockResult(c));
 
     // Apply all filters using shared filter utilities
     const { applyFiltersToResults } = await import('./filterUtils');

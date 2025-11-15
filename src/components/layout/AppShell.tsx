@@ -22,10 +22,7 @@ interface AppShellProps {
 }
 
 const SCAN_MODE_ICONS: Record<ScanMode, typeof Activity> = {
-  'daily-volatility': Activity,
-  'catalyst-hunter': Zap,
-  'cmbm-style': TrendingUp,
-  'momentum': BarChart3,
+  'unified': Activity,
 };
 
 export function AppShell({ 
