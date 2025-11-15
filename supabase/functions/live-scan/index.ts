@@ -296,6 +296,113 @@ const finnhubFundamentalsProvider: FundamentalsDataProvider = {
 };
 
 // ============================================================================
+// BENZINGA PRO PROVIDER IMPLEMENTATIONS
+// ============================================================================
+
+const BENZINGA_BASE_URL = 'https://api.benzinga.com/api/v2/news';
+
+function getBenzingaApiKey(): string | null {
+  const key = Deno.env.get('BENZINGA_API_KEY');
+  if (!key) {
+    console.warn('BENZINGA_API_KEY environment variable is not set');
+    return null;
+  }
+  return key;
+}
+
+/**
+ * Fetch news from Benzinga Pro for multiple tickers
+ * Uses the Benzinga Newsfeed v2 API
+ */
+async function fetchBenzingaNews(tickers: string[], lookbackDays = 3): Promise<RawNewsItem[]> {
+  try {
+    const apiKey = getBenzingaApiKey();
+    if (!apiKey) {
+      return [];
+    }
+
+    const now = Date.now();
+    const from = new Date(now - lookbackDays * 24 * 60 * 60 * 1000);
+    const fromIso = from.toISOString().slice(0, 10); // yyyy-mm-dd
+
+    const tickerParam = tickers.join(',');
+    const url = `${BENZINGA_BASE_URL}?token=${encodeURIComponent(apiKey)}&tickers=${encodeURIComponent(tickerParam)}&date=${fromIso}`;
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error(`Benzinga news error: ${res.status}`);
+      return [];
+    }
+
+    const data = await res.json();
+    if (!Array.isArray(data)) {
+      console.warn('Benzinga news returned non-array');
+      return [];
+    }
+
+    const allNews: RawNewsItem[] = [];
+
+    for (const item of data) {
+      const stocks: string[] = Array.isArray(item.stocks)
+        ? item.stocks.filter((s: any) => typeof s === 'string')
+        : [];
+
+      const headline = String(item.title ?? '');
+      const summary = String(item.teaser ?? item.summary ?? '');
+      const itemUrl = String(item.url ?? '');
+
+      // Benzinga fields: created/updated (may be UNIX timestamp or string)
+      let ts: number | null = null;
+      if (typeof item.updated === 'number') {
+        ts = item.updated * 1000;
+      } else if (typeof item.created === 'number') {
+        ts = item.created * 1000;
+      } else if (typeof item.updated === 'string') {
+        ts = new Date(item.updated).getTime();
+      } else if (typeof item.created === 'string') {
+        ts = new Date(item.created).getTime();
+      }
+      const datetime = ts ? new Date(ts).toISOString() : new Date().toISOString();
+
+      const channels: string[] = Array.isArray(item.channels)
+        ? item.channels.filter((c: any) => typeof c === 'string')
+        : [];
+
+      for (const ticker of stocks) {
+        const t = ticker.toUpperCase();
+        const newsItem: RawNewsItem = {
+          source: 'benzinga-news',
+          ticker: t,
+          headline,
+          summary,
+          url: itemUrl,
+          datetime,
+          category: channels[0],
+        };
+        allNews.push(newsItem);
+      }
+    }
+
+    return allNews;
+  } catch (err) {
+    console.error('fetchBenzingaNews error:', err);
+    return [];
+  }
+}
+
+const benzingaNewsProvider: NewsDataProvider = {
+  name: 'Benzinga Pro',
+  async fetchNews(tickers: string[], _request: ScanRequest): Promise<RawNewsItem[]> {
+    console.log(`[BenzingaNewsProvider] Fetching news for ${tickers.length} tickers`);
+    
+    const news = await fetchBenzingaNews(tickers);
+    
+    console.log(`[BenzingaNewsProvider] Retrieved ${news.length} news items`);
+    return news;
+  }
+};
+
+// ============================================================================
 // MASSIVE (FORMERLY POLYGON) PROVIDER IMPLEMENTATIONS
 // ============================================================================
 
@@ -407,11 +514,14 @@ const activePriceProviders: PriceDataProvider[] = [
   finnhubPriceProvider,
   massivePriceProvider, // Massive (formerly Polygon) price source
 ];
-const activeNewsProviders: NewsDataProvider[] = [finnhubNewsProvider];
+const activeNewsProviders: NewsDataProvider[] = [
+  finnhubNewsProvider,
+  benzingaNewsProvider, // Benzinga Pro news source
+];
 const activeFundamentalsProviders: FundamentalsDataProvider[] = [finnhubFundamentalsProvider];
 
 // TODO: Add IEXPriceProvider, AlphaVantagePriceProvider, etc.
-// TODO: Add BenzingaNewsProvider, MassiveNewsProvider, etc.
+// TODO: Add MassiveNewsProvider, etc.
 // TODO: Add MassiveFundamentalsProvider, AlphaVantageFundamentalsProvider, etc.
 
 // ============================================================================
@@ -607,7 +717,9 @@ function buildCatalystFromNews(news: RawNewsItem[]): {
     };
   }
 
-  const primary = news[0];
+  // Sort by datetime descending to get the most recent news first
+  const sorted = [...news].sort((a, b) => b.datetime.localeCompare(a.datetime));
+  const primary = sorted[0];
   const tags: string[] = [];
 
   const headline = primary.headline.toLowerCase();
@@ -724,6 +836,12 @@ serve(async (req) => {
         newsByTicker.set(newsItem.ticker, []);
       }
       newsByTicker.get(newsItem.ticker)!.push(newsItem);
+    }
+
+    // Sort news by datetime (most recent first) for each ticker
+    for (const [ticker, items] of newsByTicker.entries()) {
+      items.sort((a, b) => b.datetime.localeCompare(a.datetime));
+      newsByTicker.set(ticker, items);
     }
 
     console.log(`[LiveScan] Fetched news for ${newsByTicker.size} tickers`);
