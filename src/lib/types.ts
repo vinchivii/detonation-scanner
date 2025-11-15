@@ -1,24 +1,22 @@
-/**
- * Core domain types for Detonation Scanner
- */
-
-export type ScanMode = 'daily-volatility' | 'catalyst' | 'cmbm-style' | 'momentum';
-
+export type ScanMode = 'daily-volatility' | 'catalyst-hunter' | 'cmbm-style' | 'momentum';
 export type MomentumGrade = 'A' | 'B' | 'C' | 'D';
-
 export type Sentiment = 'Long' | 'Short' | 'Neutral';
+export type RiskLevel = 'Low' | 'Medium' | 'High';
+export type MarketCapRange = 'micro' | 'small' | 'mid' | 'any';
 
-export type MarketCapRange = 'micro' | 'small' | 'mid' | 'large';
+export interface ScoreBreakdown {
+  catalysts: number;
+  momentum: number;
+  structure: number;
+  sentiment: number;
+}
 
 export interface ScanFilters {
-  marketCapRanges: MarketCapRange[];
-  priceMin: number;
-  priceMax: number;
+  marketCap: MarketCapRange;
+  minPrice?: number;
+  maxPrice?: number;
+  minVolume?: number;
   sectors: string[];
-  minVolume: number;
-  minFloat?: number;
-  maxFloat?: number;
-  specialNotes?: string;
 }
 
 export interface ScanRequest {
@@ -39,35 +37,27 @@ export interface ScanResult {
   scanMode: ScanMode;
   catalystSummary: string;
   momentumGrade: MomentumGrade;
-  explosivePotential: number; // 0-100
+  explosivePotential: number;
+  scoreBreakdown: ScoreBreakdown;
   sentiment: Sentiment;
+  riskLevel: RiskLevel;
   riskNotes: string;
+  whyItMightMove: string;
   tags: string[];
 }
 
-export const SECTORS = [
-  'Technology',
-  'Biotech',
-  'Energy',
-  'Defense',
-  'Retail',
-  'Finance',
-  'Healthcare',
-  'Industrial',
-  'Materials',
-  'Communications',
-];
+export const SECTORS = ['Technology', 'Biotech', 'Energy', 'Defense', 'Retail', 'Finance', 'Healthcare', 'Industrial', 'Materials', 'Communications'];
 
 export const SCAN_MODE_LABELS: Record<ScanMode, string> = {
   'daily-volatility': 'Daily Volatility',
-  'catalyst': 'Catalyst Hunter',
+  'catalyst-hunter': 'Catalyst Hunter',
   'cmbm-style': 'CMBM-Style',
   'momentum': 'Momentum',
 };
 
 export const SCAN_MODE_DESCRIPTIONS: Record<ScanMode, string> = {
   'daily-volatility': 'Scan for stocks with high daily volatility and breakout potential',
-  'catalyst': 'Find stocks with upcoming catalysts like FDA approvals, earnings, product launches',
-  'cmbm-style': 'Low float, high squeeze potential stocks with strong momentum',
-  'momentum': 'Stocks showing strong technical momentum and trend strength',
+  'catalyst-hunter': 'Find stocks with upcoming catalysts like FDA approvals, earnings, product launches',
+  'cmbm-style': 'Low float, high squeeze potential stocks with parabolic setup characteristics',
+  'momentum': 'Stocks showing strong technical momentum and sustained trend strength',
 };

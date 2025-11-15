@@ -66,8 +66,11 @@ export function ScanResultsTable({ results, onSelectResult, isLoading }: ScanRes
   if (results.length === 0) {
     return (
       <Card className="p-12">
-        <div className="text-center">
-          <p className="text-muted-foreground">No results yet. Run a scan to find opportunities.</p>
+        <div className="text-center space-y-2">
+          <p className="text-lg font-semibold text-foreground">No Candidates Found</p>
+          <p className="text-sm text-muted-foreground">
+            Try widening your market cap or price range, or adjust sector filters
+          </p>
         </div>
       </Card>
     );
