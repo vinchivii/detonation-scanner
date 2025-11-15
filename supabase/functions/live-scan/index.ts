@@ -136,36 +136,43 @@ function getFinnhubApiKey(): string {
 }
 
 /**
- * Fetch daily volume from Finnhub candles endpoint
- * Used as fallback when quote endpoint doesn't provide volume
+ * Fetch recent daily volume from Finnhub candles endpoint
+ * Tries the last 30 days and returns the most recent positive volume.
  */
 async function fetchFinnhubDailyVolume(ticker: string): Promise<number | null> {
   try {
     const apiKey = getFinnhubApiKey();
-    
-    // Get current and previous day timestamps
-    const now = Math.floor(Date.now() / 1000);
-    const oneDayAgo = now - (24 * 60 * 60);
-    
-    const url = `${FINNHUB_BASE_URL}/stock/candle?symbol=${encodeURIComponent(ticker)}&resolution=D&from=${oneDayAgo}&to=${now}&token=${apiKey}`;
-    
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const thirtyDaysAgo = nowSec - (30 * 24 * 60 * 60);
+
+    const url = `${FINNHUB_BASE_URL}/stock/candle?symbol=${encodeURIComponent(ticker)}&resolution=D&from=${thirtyDaysAgo}&to=${nowSec}&token=${apiKey}`;
+
     const res = await fetch(url);
     if (!res.ok) {
-      console.error(`Finnhub candle error for ${ticker}: ${res.status}`);
+      const txt = await res.text();
+      console.error(`Finnhub candle error for ${ticker}: ${res.status} ${txt}`);
       return null;
     }
 
     const data = await res.json();
-    
-    // Check if we got valid data
-    if (data.s !== 'ok' || !Array.isArray(data.v) || data.v.length === 0) {
+
+    if (!data || data.s !== 'ok' || !Array.isArray(data.v) || data.v.length === 0) {
+      if (data && data.s === 'no_data') {
+        console.log(`[Finnhub] No candle data for ${ticker} in last 30 days.`);
+      }
       return null;
     }
 
-    // Get the most recent volume value (last element in array)
-    const volume = data.v[data.v.length - 1];
-    
-    return typeof volume === 'number' && volume > 0 ? volume : null;
+    // Find the most recent positive volume value
+    for (let i = data.v.length - 1; i >= 0; i--) {
+      const vol = data.v[i];
+      if (typeof vol === 'number' && vol > 0) {
+        return vol;
+      }
+    }
+
+    return null;
   } catch (err) {
     console.error(`fetchFinnhubDailyVolume error for ${ticker}:`, err);
     return null;
@@ -199,7 +206,11 @@ async function fetchFinnhubQuote(ticker: string): Promise<RawQuote | null> {
       if (volume != null) {
         console.log(`[Finnhub] Successfully retrieved volume from candles for ${ticker}: ${volume}`);
       } else {
-        console.log(`[Finnhub] No volume available from candles for ${ticker}`);
+        console.log(`[Finnhub] No volume available from candles for ${ticker}, trying Massive fallback...`);
+        volume = await fetchMassiveRecentDailyVolume(ticker);
+        if (volume != null) {
+          console.log(`[Massive] Fallback volume for ${ticker}: ${volume}`);
+        }
       }
     }
 
@@ -476,12 +487,38 @@ function getMassiveBaseUrl(): string | null {
 }
 
 /**
- * Fetch quote from Massive (formerly Polygon.io)
- * 
- * TODO: Adjust the endpoint path and field mappings according to Massive's current API documentation.
- * This implementation uses a placeholder structure that should be updated once the actual
- * Massive API endpoint format is confirmed.
+ * Fetch recent daily volume from Massive (Polygon-style) aggregates
  */
+async function fetchMassiveRecentDailyVolume(ticker: string): Promise<number | null> {
+  try {
+    const baseUrl = getMassiveBaseUrl();
+    const apiKey = getMassiveApiKey();
+    if (!baseUrl || !apiKey) return null;
+
+    const now = new Date();
+    const to = now.toISOString().slice(0, 10);
+    const fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const from = fromDate.toISOString().slice(0, 10);
+
+    const url = `${baseUrl}/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${from}/${to}?adjusted=true&apiKey=${apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error(`Massive volume error for ${ticker}: ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const results = Array.isArray(data.results) ? data.results : [];
+    for (let i = results.length - 1; i >= 0; i--) {
+      const v = results[i]?.v;
+      if (typeof v === 'number' && v > 0) return v;
+    }
+    return null;
+  } catch (err) {
+    console.error(`fetchMassiveRecentDailyVolume error for ${ticker}:`, err);
+    return null;
+  }
+}
 async function fetchMassiveQuote(ticker: string): Promise<RawQuote | null> {
   try {
     const baseUrl = getMassiveBaseUrl();
