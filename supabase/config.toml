@@ -1,1 +1,4 @@
 project_id = "notjzrgqqzneteieiujn"
+
+[functions.live-scan]
+verify_jwt = false
