@@ -180,16 +180,25 @@ class MultiSourceLiveMarketDataProvider implements MarketDataProvider {
       });
 
       if (error) {
+        console.error('Live scan Supabase error:', error);
         throw new Error(`Live scan failed: ${error.message}`);
       }
 
       // Edge function returns results array directly
-      const results = data as ScanResult[];
+      if (!data) {
+        console.error('Live scan returned no data');
+        throw new Error('No data returned from live scan function');
+      }
+
+      // Handle both direct array response and wrapped response
+      const results = Array.isArray(data) ? data : (data as any)?.results || data;
       
       if (!Array.isArray(results)) {
+        console.error('Invalid response format:', data);
         throw new Error('Invalid response from live scan function - expected results array');
       }
 
+      console.log(`Live scan returned ${results.length} results`);
       return results;
     } catch (err) {
       console.error('MultiSourceLiveMarketDataProvider.runScan error:', err);
