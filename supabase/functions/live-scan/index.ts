@@ -296,16 +296,123 @@ const finnhubFundamentalsProvider: FundamentalsDataProvider = {
 };
 
 // ============================================================================
+// MASSIVE (FORMERLY POLYGON) PROVIDER IMPLEMENTATIONS
+// ============================================================================
+
+function getMassiveApiKey(): string | null {
+  const key = Deno.env.get('MASSIVE_API_KEY');
+  if (!key) {
+    console.warn('MASSIVE_API_KEY environment variable is not set');
+    return null;
+  }
+  return key;
+}
+
+function getMassiveBaseUrl(): string | null {
+  const base = Deno.env.get('MASSIVE_API_BASE_URL');
+  if (!base) {
+    console.warn('MASSIVE_API_BASE_URL environment variable is not set');
+    return null;
+  }
+  return base.replace(/\/$/, ''); // strip trailing slash
+}
+
+/**
+ * Fetch quote from Massive (formerly Polygon.io)
+ * 
+ * TODO: Adjust the endpoint path and field mappings according to Massive's current API documentation.
+ * This implementation uses a placeholder structure that should be updated once the actual
+ * Massive API endpoint format is confirmed.
+ */
+async function fetchMassiveQuote(ticker: string): Promise<RawQuote | null> {
+  try {
+    const baseUrl = getMassiveBaseUrl();
+    const apiKey = getMassiveApiKey();
+
+    if (!baseUrl || !apiKey) {
+      return null;
+    }
+
+    // TODO: Update this endpoint path according to Massive's actual API structure
+    // Example placeholder - adjust based on Massive docs (formerly Polygon v2/aggs/ticker/{ticker}/prev)
+    const url = `${baseUrl}/v2/aggs/ticker/${encodeURIComponent(ticker)}/prev?apiKey=${apiKey}`;
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error(`Massive quote error for ${ticker}: ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+
+    // TODO: Map Massive's actual JSON fields into price/prevClose/volume/timestamp
+    // This mapping is a placeholder based on Polygon-style response structure
+    // Adjust according to actual Massive API response format
+    const results = data.results?.[0];
+    if (!results) {
+      return null;
+    }
+
+    const price = typeof results.c === 'number' ? results.c : null; // close price
+    const prevClose = typeof results.o === 'number' ? results.o : null; // open as prev close approximation
+    const volume = typeof results.v === 'number' ? results.v : null;
+    const timestamp = typeof results.t === 'number' ? results.t : null;
+
+    if (price == null || prevClose == null) {
+      return null;
+    }
+
+    return {
+      source: 'massive',
+      ticker,
+      price,
+      prevClose,
+      volume,
+      timestamp,
+    };
+  } catch (err) {
+    console.error(`fetchMassiveQuote error for ${ticker}:`, err);
+    return null;
+  }
+}
+
+const massivePriceProvider: PriceDataProvider = {
+  name: 'Massive',
+  async fetchQuotes(tickers: string[], _request: ScanRequest): Promise<RawQuote[]> {
+    console.log(`[MassivePriceProvider] Fetching quotes for ${tickers.length} tickers`);
+    
+    const results = await Promise.allSettled(
+      tickers.map(ticker => fetchMassiveQuote(ticker))
+    );
+
+    const quotes: RawQuote[] = [];
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        quotes.push(result.value);
+      } else if (result.status === 'rejected') {
+        console.error('[MassivePriceProvider] Error:', result.reason);
+      }
+    }
+
+    console.log(`[MassivePriceProvider] Retrieved ${quotes.length} valid quotes`);
+    return quotes;
+  }
+};
+
+// ============================================================================
 // ACTIVE PROVIDER REGISTRATION
 // ============================================================================
 
-const activePriceProviders: PriceDataProvider[] = [finnhubPriceProvider];
+const activePriceProviders: PriceDataProvider[] = [
+  finnhubPriceProvider,
+  massivePriceProvider, // Massive (formerly Polygon) price source
+];
 const activeNewsProviders: NewsDataProvider[] = [finnhubNewsProvider];
 const activeFundamentalsProviders: FundamentalsDataProvider[] = [finnhubFundamentalsProvider];
 
-// TODO: Add MassivePriceProvider, IEXPriceProvider, AlphaVantagePriceProvider, etc.
-// TODO: Add BenzingaNewsProvider, etc.
-// TODO: Add AlphaVantageFundamentalsProvider, etc.
+// TODO: Add IEXPriceProvider, AlphaVantagePriceProvider, etc.
+// TODO: Add BenzingaNewsProvider, MassiveNewsProvider, etc.
+// TODO: Add MassiveFundamentalsProvider, AlphaVantageFundamentalsProvider, etc.
 
 // ============================================================================
 // UNIVERSE MODULE

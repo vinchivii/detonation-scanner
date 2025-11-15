@@ -5,8 +5,9 @@
  * Each provider can be implemented by different data sources (Finnhub, Massive, IEX, AlphaVantage, etc.)
  * and registered in the live-scan endpoint for automatic aggregation.
  * 
- * Other future implementations (MassivePriceProvider, IEXPriceProvider, AlphaVantagePriceProvider, 
- * BenzingaNewsProvider, etc.) can plug into the same interface and be registered in /api/live-scan.
+ * Other future implementations (MassivePriceProvider [✓ implemented], IEXPriceProvider, 
+ * AlphaVantagePriceProvider, BenzingaNewsProvider, etc.) can plug into the same interface 
+ * and be registered in /api/live-scan.
  */
 
 import { RawQuote } from './quoteTypes';
