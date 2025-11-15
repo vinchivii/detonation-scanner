@@ -1,32 +1,49 @@
 /**
- * Live Market Scan Edge Function
+ * Live Scan Edge Function - Multi-Provider Architecture
  * 
- * Multi-source market data aggregation endpoint with news/catalyst integration.
- * - Fetches real-time quotes from Finnhub
- * - Pulls company news for top movers
- * - Computes mode-aware scores and catalyst summaries
+ * This edge function orchestrates data gathering from multiple providers:
+ * - Price providers (Finnhub, Massive, IEX, etc.)
+ * - News providers (Finnhub, Benzinga, etc.)
+ * - Fundamentals providers (Finnhub, AlphaVantage, etc.)
+ * 
+ * Currently active: Finnhub across all three categories
+ * 
+ * Massive (formerly Polygon) can be plugged in by implementing PriceDataProvider and
+ * registering it in activePriceProviders once an API key + endpoint are added.
  */
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+// ============================================================================
+// TYPE DEFINITIONS
+// ============================================================================
 
-// Types
 type ScanMode = 'daily-volatility' | 'catalyst-hunter' | 'cmbm-style' | 'momentum';
 type MomentumGrade = 'A' | 'B' | 'C' | 'D';
 type Sentiment = 'Long' | 'Short' | 'Neutral';
 type RiskLevel = 'Low' | 'Medium' | 'High';
-type QuoteSource = 'finnhub' | 'polygon' | 'iex' | 'mock';
 type MarketCapRange = 'micro' | 'small' | 'mid' | 'any';
+type QuoteSource = 'finnhub' | 'massive' | 'iex' | 'alphavantage';
 
 interface ScoreBreakdown {
   catalysts: number;
   momentum: number;
   structure: number;
   sentiment: number;
+}
+
+interface ScanFilters {
+  marketCap: MarketCapRange;
+  minPrice?: number;
+  maxPrice?: number;
+  minVolume?: number;
+  sectors: string[];
+}
+
+interface ScanRequest {
+  mode: ScanMode;
+  filters: ScanFilters;
+  notes?: string;
 }
 
 interface ScanResult {
@@ -53,6 +70,12 @@ interface ScanResult {
   primaryNewsDatetime?: string;
 }
 
+interface TickerMeta {
+  symbol: string;
+  sector: string;
+  capBucket: 'micro' | 'small' | 'mid' | 'large';
+}
+
 interface RawQuote {
   source: QuoteSource;
   ticker: string;
@@ -63,7 +86,7 @@ interface RawQuote {
 }
 
 interface RawNewsItem {
-  source: QuoteSource | 'finnhub-news';
+  source: string;
   ticker: string;
   headline: string;
   summary: string;
@@ -72,63 +95,70 @@ interface RawNewsItem {
   category?: string;
 }
 
-interface ScanFilters {
-  marketCap: MarketCapRange;
-  minPrice?: number;
-  maxPrice?: number;
-  minVolume?: number;
-  sectors: string[];
+interface FundamentalSnapshot {
+  ticker: string;
+  marketCap: number | null;
+  float: number | null;
+  sector: string | null;
 }
 
-interface ScanRequest {
-  mode: ScanMode;
-  filters: ScanFilters;
+// ============================================================================
+// PROVIDER INTERFACES
+// ============================================================================
+
+interface PriceDataProvider {
+  name: string;
+  fetchQuotes(tickers: string[], request: ScanRequest): Promise<RawQuote[]>;
 }
 
-interface TickerMeta {
-  symbol: string;
-  sector: string;
-  capBucket: 'micro' | 'small' | 'mid' | 'large';
+interface NewsDataProvider {
+  name: string;
+  fetchNews(tickers: string[], request: ScanRequest): Promise<RawNewsItem[]>;
 }
 
-// ===== Finnhub Client =====
+interface FundamentalsDataProvider {
+  name: string;
+  fetchFundamentals(tickers: string[], request: ScanRequest): Promise<FundamentalSnapshot[]>;
+}
+
+// ============================================================================
+// FINNHUB PROVIDER IMPLEMENTATIONS
+// ============================================================================
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 
+function getFinnhubApiKey(): string {
+  const key = Deno.env.get('FINNHUB_API_KEY');
+  if (!key) {
+    throw new Error('FINNHUB_API_KEY environment variable is not set');
+  }
+  return key;
+}
+
 async function fetchFinnhubQuote(ticker: string): Promise<RawQuote | null> {
   try {
-    const apiKey = Deno.env.get('FINNHUB_API_KEY');
-    if (!apiKey) {
-      console.error('FINNHUB_API_KEY is not set');
-      return null;
-    }
-
+    const apiKey = getFinnhubApiKey();
     const url = `${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(ticker)}&token=${apiKey}`;
+    
     const res = await fetch(url);
-
     if (!res.ok) {
       console.error(`Finnhub quote error for ${ticker}: ${res.status}`);
       return null;
     }
 
     const data = await res.json();
-    const price = typeof data.c === 'number' ? data.c : null;
-    const prevClose = typeof data.pc === 'number' ? data.pc : null;
-    const volume = typeof data.v === 'number' ? data.v : null;
-    const timestamp = typeof data.t === 'number' ? data.t : null;
-
-    if (price === 0) {
-      console.warn(`Finnhub returned 0 price for ${ticker}`);
+    
+    if (data.c == null || data.pc == null) {
       return null;
     }
 
     return {
       source: 'finnhub',
       ticker,
-      price,
-      prevClose,
-      volume,
-      timestamp,
+      price: data.c,
+      prevClose: data.pc,
+      volume: data.v ?? null,
+      timestamp: data.t ? data.t * 1000 : Date.now(),
     };
   } catch (err) {
     console.error(`fetchFinnhubQuote error for ${ticker}:`, err);
@@ -138,27 +168,26 @@ async function fetchFinnhubQuote(ticker: string): Promise<RawQuote | null> {
 
 async function fetchFinnhubCompanyNews(ticker: string): Promise<RawNewsItem[]> {
   try {
-    const apiKey = Deno.env.get('FINNHUB_API_KEY');
-    if (!apiKey) {
-      console.error('FINNHUB_API_KEY is not set');
-      return [];
-    }
+    const apiKey = getFinnhubApiKey();
 
     const now = Math.floor(Date.now() / 1000);
     const threeDaysAgo = now - 3 * 24 * 60 * 60;
+
     const fromDate = new Date(threeDaysAgo * 1000).toISOString().slice(0, 10);
     const toDate = new Date().toISOString().slice(0, 10);
 
     const url = `${FINNHUB_BASE_URL}/company-news?symbol=${encodeURIComponent(ticker)}&from=${fromDate}&to=${toDate}&token=${apiKey}`;
-    const res = await fetch(url);
 
+    const res = await fetch(url);
     if (!res.ok) {
-      console.error(`Finnhub news error for ${ticker}: ${res.status}`);
+      console.error(`Finnhub company news error for ${ticker}: ${res.status}`);
       return [];
     }
 
     const data = await res.json();
-    if (!Array.isArray(data)) return [];
+    if (!Array.isArray(data)) {
+      return [];
+    }
 
     return data.slice(0, 5).map((item: any) => {
       const ts = typeof item.datetime === 'number' ? item.datetime * 1000 : Date.now();
@@ -178,55 +207,134 @@ async function fetchFinnhubCompanyNews(ticker: string): Promise<RawNewsItem[]> {
   }
 }
 
-// ===== Universe Module =====
+async function fetchFinnhubFundamentals(ticker: string): Promise<FundamentalSnapshot | null> {
+  try {
+    const apiKey = getFinnhubApiKey();
+    const url = `${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(ticker)}&token=${apiKey}`;
+    
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error(`Finnhub fundamentals error for ${ticker}: ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+    
+    return {
+      ticker,
+      marketCap: typeof data.marketCapitalization === 'number' ? data.marketCapitalization * 1_000_000 : null,
+      float: typeof data.shareOutstanding === 'number' ? data.shareOutstanding * 1_000_000 : null,
+      sector: typeof data.finnhubIndustry === 'string' ? data.finnhubIndustry : null,
+    };
+  } catch (err) {
+    console.error(`fetchFinnhubFundamentals error for ${ticker}:`, err);
+    return null;
+  }
+}
+
+const finnhubPriceProvider: PriceDataProvider = {
+  name: 'Finnhub',
+  async fetchQuotes(tickers: string[], _request: ScanRequest): Promise<RawQuote[]> {
+    console.log(`[FinnhubPriceProvider] Fetching quotes for ${tickers.length} tickers`);
+    
+    const results = await Promise.allSettled(
+      tickers.map(ticker => fetchFinnhubQuote(ticker))
+    );
+
+    const quotes: RawQuote[] = [];
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        quotes.push(result.value);
+      }
+    }
+
+    console.log(`[FinnhubPriceProvider] Retrieved ${quotes.length} valid quotes`);
+    return quotes;
+  }
+};
+
+const finnhubNewsProvider: NewsDataProvider = {
+  name: 'Finnhub News',
+  async fetchNews(tickers: string[], _request: ScanRequest): Promise<RawNewsItem[]> {
+    console.log(`[FinnhubNewsProvider] Fetching news for ${tickers.length} tickers`);
+    
+    const results = await Promise.allSettled(
+      tickers.map(ticker => fetchFinnhubCompanyNews(ticker))
+    );
+
+    const allNews: RawNewsItem[] = [];
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        allNews.push(...result.value);
+      }
+    }
+
+    console.log(`[FinnhubNewsProvider] Retrieved ${allNews.length} news items`);
+    return allNews;
+  }
+};
+
+const finnhubFundamentalsProvider: FundamentalsDataProvider = {
+  name: 'Finnhub Fundamentals',
+  async fetchFundamentals(tickers: string[], _request: ScanRequest): Promise<FundamentalSnapshot[]> {
+    console.log(`[FinnhubFundamentalsProvider] Fetching fundamentals for ${tickers.length} tickers`);
+    
+    const results = await Promise.allSettled(
+      tickers.map(ticker => fetchFinnhubFundamentals(ticker))
+    );
+
+    const fundamentals: FundamentalSnapshot[] = [];
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        fundamentals.push(result.value);
+      }
+    }
+
+    console.log(`[FinnhubFundamentalsProvider] Retrieved ${fundamentals.length} fundamental snapshots`);
+    return fundamentals;
+  }
+};
+
+// ============================================================================
+// ACTIVE PROVIDER REGISTRATION
+// ============================================================================
+
+const activePriceProviders: PriceDataProvider[] = [finnhubPriceProvider];
+const activeNewsProviders: NewsDataProvider[] = [finnhubNewsProvider];
+const activeFundamentalsProviders: FundamentalsDataProvider[] = [finnhubFundamentalsProvider];
+
+// TODO: Add MassivePriceProvider, IEXPriceProvider, AlphaVantagePriceProvider, etc.
+// TODO: Add BenzingaNewsProvider, etc.
+// TODO: Add AlphaVantageFundamentalsProvider, etc.
+
+// ============================================================================
+// UNIVERSE MODULE
+// ============================================================================
 
 const TICKER_UNIVERSE: TickerMeta[] = [
   { symbol: 'AAPL', sector: 'Technology', capBucket: 'large' },
-  { symbol: 'MSFT', sector: 'Technology', capBucket: 'large' },
-  { symbol: 'GOOGL', sector: 'Technology', capBucket: 'large' },
-  { symbol: 'AMZN', sector: 'Technology', capBucket: 'large' },
-  { symbol: 'META', sector: 'Technology', capBucket: 'large' },
   { symbol: 'TSLA', sector: 'Consumer', capBucket: 'large' },
   { symbol: 'NVDA', sector: 'Technology', capBucket: 'large' },
   { symbol: 'AMD', sector: 'Technology', capBucket: 'large' },
-  { symbol: 'AVGO', sector: 'Technology', capBucket: 'large' },
   { symbol: 'SMCI', sector: 'Technology', capBucket: 'mid' },
   { symbol: 'PLTR', sector: 'Technology', capBucket: 'mid' },
-  { symbol: 'ARM', sector: 'Technology', capBucket: 'mid' },
-  { symbol: 'AI', sector: 'Technology', capBucket: 'mid' },
   { symbol: 'TQQQ', sector: 'ETF', capBucket: 'mid' },
   { symbol: 'SOXL', sector: 'ETF', capBucket: 'mid' },
   { symbol: 'IWM', sector: 'ETF', capBucket: 'large' },
-  { symbol: 'SPY', sector: 'ETF', capBucket: 'large' },
-  { symbol: 'QQQ', sector: 'ETF', capBucket: 'large' },
   { symbol: 'RIOT', sector: 'Crypto', capBucket: 'small' },
   { symbol: 'MARA', sector: 'Crypto', capBucket: 'small' },
-  { symbol: 'CLSK', sector: 'Crypto', capBucket: 'small' },
+  { symbol: 'HUDI', sector: 'Industrial', capBucket: 'micro' },
   { symbol: 'IONQ', sector: 'Technology', capBucket: 'small' },
   { symbol: 'DNA', sector: 'Biotech', capBucket: 'small' },
   { symbol: 'JOBY', sector: 'Industrial', capBucket: 'small' },
   { symbol: 'ASTS', sector: 'Communications', capBucket: 'small' },
-  { symbol: 'SOUN', sector: 'Technology', capBucket: 'small' },
-  { symbol: 'PLUG', sector: 'Energy', capBucket: 'small' },
   { symbol: 'GME', sector: 'Consumer', capBucket: 'mid' },
   { symbol: 'AMC', sector: 'Consumer', capBucket: 'mid' },
   { symbol: 'CVNA', sector: 'Consumer', capBucket: 'mid' },
   { symbol: 'FFIE', sector: 'Consumer', capBucket: 'micro' },
-  { symbol: 'HUDI', sector: 'Industrial', capBucket: 'micro' },
-  { symbol: 'MRNA', sector: 'Biotech', capBucket: 'mid' },
-  { symbol: 'CRSP', sector: 'Biotech', capBucket: 'small' },
-  { symbol: 'RXRX', sector: 'Biotech', capBucket: 'small' },
+  { symbol: 'SOUN', sector: 'Technology', capBucket: 'small' },
+  { symbol: 'AI', sector: 'Technology', capBucket: 'mid' }
 ];
-
-function matchesMarketCap(filters: ScanFilters, meta: TickerMeta): boolean {
-  if (filters.marketCap === 'any') return true;
-  return filters.marketCap === meta.capBucket;
-}
-
-function matchesSector(filters: ScanFilters, meta: TickerMeta): boolean {
-  if (!filters.sectors || filters.sectors.length === 0) return true;
-  return filters.sectors.includes(meta.sector);
-}
 
 function buildLiveUniverse(request: ScanRequest): TickerMeta[] {
   const { mode, filters } = request;
@@ -237,16 +345,27 @@ function buildLiveUniverse(request: ScanRequest): TickerMeta[] {
   } else if (mode === 'momentum') {
     pool = pool.filter(meta => ['Technology', 'Crypto', 'ETF'].includes(meta.sector));
   } else if (mode === 'catalyst-hunter') {
-    pool = pool.filter(meta => !(meta.capBucket === 'large' && meta.sector === 'ETF'));
+    pool = pool.filter(meta => meta.capBucket !== 'large' || meta.sector !== 'ETF');
   }
 
-  pool = pool.filter(meta => matchesMarketCap(filters, meta) && matchesSector(filters, meta));
+  if (filters.marketCap !== 'any') {
+    pool = pool.filter(meta => meta.capBucket === filters.marketCap);
+  }
+
+  if (filters.sectors && filters.sectors.length > 0) {
+    pool = pool.filter(meta => filters.sectors.includes(meta.sector));
+  }
+
   return pool.slice(0, 40);
 }
 
-// ===== Quote Merge =====
+// ============================================================================
+// DATA AGGREGATION HELPERS
+// ============================================================================
 
 function mergeRawQuotes(quotes: RawQuote[]): RawQuote | null {
+  if (!quotes || quotes.length === 0) return null;
+
   const valid = quotes.filter(q => q && q.price != null && q.prevClose != null);
   if (!valid.length) return quotes[0] ?? null;
 
@@ -270,7 +389,24 @@ function mergeRawQuotes(quotes: RawQuote[]): RawQuote | null {
   return { ...primary, volume };
 }
 
-// ===== Scoring Logic (Mode-Aware) =====
+function mergeFundamentals(snapshots: FundamentalSnapshot[]): FundamentalSnapshot | null {
+  if (!snapshots || snapshots.length === 0) return null;
+
+  const base = snapshots[0];
+  let merged: FundamentalSnapshot = { ...base };
+
+  for (const snap of snapshots.slice(1)) {
+    if (snap.marketCap != null && merged.marketCap == null) merged.marketCap = snap.marketCap;
+    if (snap.float != null && merged.float == null) merged.float = snap.float;
+    if (snap.sector != null && merged.sector == null) merged.sector = snap.sector;
+  }
+
+  return merged;
+}
+
+// ============================================================================
+// SCORING LOGIC
+// ============================================================================
 
 function deriveScoreBreakdown(changePercent: number, volume: number | null, mode: ScanMode): ScoreBreakdown {
   const absChange = Math.abs(changePercent);
@@ -292,17 +428,12 @@ function deriveScoreBreakdown(changePercent: number, volume: number | null, mode
     catalysts: Math.round(catalysts),
     momentum: Math.round(momentum),
     structure: Math.round(structure),
-    sentiment: Math.max(0, Math.min(100, Math.round(sentimentScore))),
+    sentiment: Math.max(0, Math.min(100, Math.round(sentimentScore)))
   };
 }
 
-function deriveLabels(changePercent: number, mode: ScanMode): {
-  momentumGrade: MomentumGrade;
-  sentiment: Sentiment;
-  riskLevel: RiskLevel;
-} {
+function deriveLabels(changePercent: number, mode: ScanMode): { momentumGrade: MomentumGrade; sentiment: Sentiment; riskLevel: RiskLevel } {
   const absChange = Math.abs(changePercent);
-
   let momentumGrade: MomentumGrade = 'D';
   if (absChange > 15) momentumGrade = 'A';
   else if (absChange > 8) momentumGrade = 'B';
@@ -341,7 +472,6 @@ function deriveTags(
   if (capBucket === 'micro' || capBucket === 'small') tags.push('Microcap');
   if (metaSector === 'Crypto') tags.push('Crypto-linked');
   if (metaSector === 'Technology') tags.push('Tech');
-  if (metaSector === 'Biotech') tags.push('Biotech');
   if (absChange > 10) tags.push('High Volatility');
   if (absChange > 20) tags.push('Parabolic Risk');
   if (volume && volume > 5_000_000) tags.push('High Volume');
@@ -353,7 +483,9 @@ function deriveTags(
   return Array.from(new Set(tags));
 }
 
-// ===== News/Catalyst Helpers =====
+// ============================================================================
+// NEWS/CATALYST PROCESSING
+// ============================================================================
 
 function buildCatalystFromNews(news: RawNewsItem[]): {
   catalystSummary: string;
@@ -364,7 +496,7 @@ function buildCatalystFromNews(news: RawNewsItem[]): {
     return {
       catalystSummary: 'No recent company-specific news detected in the last few days.',
       primary: undefined,
-      catalystTags: [],
+      catalystTags: []
     };
   }
 
@@ -379,20 +511,21 @@ function buildCatalystFromNews(news: RawNewsItem[]): {
   if (headline.includes('upgrade') || headline.includes('downgrade')) tags.push('Analyst Action');
   if (headline.includes('merger') || headline.includes('acquisition')) tags.push('M&A');
   if (headline.includes('contract') || headline.includes('deal')) tags.push('Contract');
-  if (headline.includes('fda') || headline.includes('trial') || headline.includes('phase')) tags.push('Biotech Catalyst');
+  if (headline.includes('FDA') || headline.includes('trial') || headline.includes('phase')) tags.push('Biotech Catalyst');
 
-  const dateStr = new Date(primary.datetime).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-  const catalystSummary = `Latest news: ${primary.headline} (${dateStr})`;
+  const catalystSummary = `Latest news: ${primary.headline} (${new Date(primary.datetime).toLocaleString()}).`;
 
   return { catalystSummary, primary, catalystTags: Array.from(new Set(tags)) };
 }
 
-// ===== Main Handler =====
+// ============================================================================
+// MAIN HANDLER
+// ============================================================================
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -401,125 +534,177 @@ serve(async (req) => {
 
   try {
     const { request } = await req.json() as { request: ScanRequest };
-    console.log('Live scan request:', request);
 
-    // Build universe
+    console.log(`[LiveScan] Starting scan with mode: ${request.mode}`);
+
+    // 1. Build ticker universe
     const metaUniverse = buildLiveUniverse(request);
     const tickers = metaUniverse.map(m => m.symbol);
-    console.log(`Fetching quotes for ${tickers.length} tickers`);
+    console.log(`[LiveScan] Universe size: ${tickers.length} tickers`);
 
-    // Fetch quotes
-    const quotePromises = tickers.map(ticker => fetchFinnhubQuote(ticker));
-    const quotes = await Promise.all(quotePromises);
+    // 2. Fetch quotes from all active price providers
+    const allQuotesArrays = await Promise.all(
+      activePriceProviders.map(provider => provider.fetchQuotes(tickers, request))
+    );
+    const allQuotes = allQuotesArrays.flat();
 
-    // Build initial results (without news)
-    const intermediateResults: Array<{
-      ticker: string;
-      meta: TickerMeta;
-      quote: RawQuote;
-      changePercent: number;
-      result: ScanResult;
-    }> = [];
+    // Group quotes by ticker and merge
+    const quotesByTicker = new Map<string, RawQuote[]>();
+    for (const quote of allQuotes) {
+      if (!quotesByTicker.has(quote.ticker)) {
+        quotesByTicker.set(quote.ticker, []);
+      }
+      quotesByTicker.get(quote.ticker)!.push(quote);
+    }
 
-    for (let i = 0; i < tickers.length; i++) {
-      const ticker = tickers[i];
-      const meta = metaUniverse[i];
-      const rawQuote = quotes[i];
+    const mergedQuotes = new Map<string, RawQuote>();
+    for (const [ticker, quotes] of quotesByTicker.entries()) {
+      const merged = mergeRawQuotes(quotes);
+      if (merged) {
+        mergedQuotes.set(ticker, merged);
+      }
+    }
 
-      if (!rawQuote) continue;
+    console.log(`[LiveScan] Merged quotes for ${mergedQuotes.size} tickers`);
 
-      const merged = mergeRawQuotes([rawQuote]);
-      if (!merged || merged.price == null || merged.prevClose == null) continue;
+    // 3. Fetch fundamentals from all active providers
+    const allFundamentalsArrays = await Promise.all(
+      activeFundamentalsProviders.map(provider => provider.fetchFundamentals(tickers, request))
+    );
+    const allFundamentals = allFundamentalsArrays.flat();
 
-      const price = merged.price;
-      const prevClose = merged.prevClose;
-      const changePercent = prevClose !== 0 ? ((price - prevClose) / prevClose) * 100 : 0;
-      const volume = merged.volume ?? 0;
+    // Group and merge fundamentals
+    const fundamentalsByTicker = new Map<string, FundamentalSnapshot[]>();
+    for (const fund of allFundamentals) {
+      if (!fundamentalsByTicker.has(fund.ticker)) {
+        fundamentalsByTicker.set(fund.ticker, []);
+      }
+      fundamentalsByTicker.get(fund.ticker)!.push(fund);
+    }
 
-      const scoreBreakdown = deriveScoreBreakdown(changePercent, volume, request.mode);
+    const mergedFundamentals = new Map<string, FundamentalSnapshot>();
+    for (const [ticker, funds] of fundamentalsByTicker.entries()) {
+      const merged = mergeFundamentals(funds);
+      if (merged) {
+        mergedFundamentals.set(ticker, merged);
+      }
+    }
+
+    console.log(`[LiveScan] Merged fundamentals for ${mergedFundamentals.size} tickers`);
+
+    // 4. Identify top movers for news lookup
+    const quotesWithChange: Array<{ ticker: string; absChange: number }> = [];
+    for (const [ticker, quote] of mergedQuotes.entries()) {
+      if (quote.price != null && quote.prevClose != null && quote.prevClose !== 0) {
+        const changePercent = ((quote.price - quote.prevClose) / quote.prevClose) * 100;
+        quotesWithChange.push({ ticker, absChange: Math.abs(changePercent) });
+      }
+    }
+
+    quotesWithChange.sort((a, b) => b.absChange - a.absChange);
+    const topMoverTickers = quotesWithChange.slice(0, 10).map(x => x.ticker);
+
+    // 5. Fetch news for top movers from all active news providers
+    const allNewsArrays = await Promise.all(
+      activeNewsProviders.map(provider => provider.fetchNews(topMoverTickers, request))
+    );
+    const allNews = allNewsArrays.flat();
+
+    // Group news by ticker
+    const newsByTicker = new Map<string, RawNewsItem[]>();
+    for (const newsItem of allNews) {
+      if (!newsByTicker.has(newsItem.ticker)) {
+        newsByTicker.set(newsItem.ticker, []);
+      }
+      newsByTicker.get(newsItem.ticker)!.push(newsItem);
+    }
+
+    console.log(`[LiveScan] Fetched news for ${newsByTicker.size} tickers`);
+
+    // 6. Build ScanResult array
+    const results: ScanResult[] = [];
+
+    for (const meta of metaUniverse) {
+      const quote = mergedQuotes.get(meta.symbol);
+      if (!quote || quote.price == null || quote.prevClose == null || quote.prevClose === 0) {
+        continue;
+      }
+
+      const changePercent = ((quote.price - quote.prevClose) / quote.prevClose) * 100;
+      const fundamentals = mergedFundamentals.get(meta.symbol);
+      const news = newsByTicker.get(meta.symbol) || [];
+
+      const scoreBreakdown = deriveScoreBreakdown(changePercent, quote.volume, request.mode);
       const { momentumGrade, sentiment, riskLevel } = deriveLabels(changePercent, request.mode);
       const explosivePotential = deriveExplosivePotential(scoreBreakdown, request.mode);
-      const tags = deriveTags(changePercent, volume, meta.sector, meta.capBucket, request.mode);
+      const baseTags = deriveTags(changePercent, quote.volume, meta.sector, meta.capBucket, request.mode);
+
+      const { catalystSummary, primary, catalystTags } = buildCatalystFromNews(news);
+      const finalTags = Array.from(new Set([...baseTags, ...catalystTags]));
+
+      const marketCap = fundamentals?.marketCap ?? 1_000_000_000;
+      const float = fundamentals?.float ?? marketCap / 100;
+      const sector = fundamentals?.sector ?? meta.sector;
 
       const result: ScanResult = {
-        ticker,
-        companyName: ticker,
-        price: parseFloat(price.toFixed(2)),
-        changePercent: parseFloat(changePercent.toFixed(2)),
-        volume,
-        marketCap: 0,
-        float: 0,
-        sector: meta.sector,
+        ticker: meta.symbol,
+        companyName: meta.symbol,
+        price: quote.price,
+        changePercent,
+        volume: quote.volume ?? 0,
+        marketCap,
+        float,
+        sector,
         scanMode: request.mode,
-        catalystSummary: `Price move of ${changePercent.toFixed(2)}% with volume ${volume}. No major company-specific news detected.`,
+        catalystSummary,
         momentumGrade,
         explosivePotential,
         scoreBreakdown,
         sentiment,
         riskLevel,
-        riskNotes:
-          riskLevel === 'High'
-            ? 'High volatility detected, position sizing critical'
-            : riskLevel === 'Medium'
-            ? 'Moderate risk level, standard risk management applies'
-            : 'Lower risk detected, suitable for larger positions',
-        whyItMightMove: `${Math.abs(changePercent).toFixed(1)}% ${changePercent >= 0 ? 'gain' : 'loss'} with ${momentumGrade} momentum grade`,
-        tags,
+        riskNotes: riskLevel === 'High' ? 'Extreme volatility detected' : 'Monitor closely',
+        whyItMightMove: `${changePercent >= 0 ? 'Upward' : 'Downward'} momentum with ${Math.abs(changePercent).toFixed(1)}% move`,
+        tags: finalTags,
+        primaryNewsHeadline: primary?.headline,
+        primaryNewsUrl: primary?.url,
+        primaryNewsDatetime: primary?.datetime,
       };
 
-      intermediateResults.push({ ticker, meta, quote: merged, changePercent, result });
+      results.push(result);
     }
 
-    // Fetch news for top movers (by absolute changePercent)
-    const sortedByMove = [...intermediateResults].sort((a, b) => 
-      Math.abs(b.changePercent) - Math.abs(a.changePercent)
-    );
-    const topMovers = sortedByMove.slice(0, 10);
-    
-    console.log(`Fetching news for top ${topMovers.length} movers`);
-    const newsPromises = topMovers.map(m => fetchFinnhubCompanyNews(m.ticker));
-    const newsResults = await Promise.allSettled(newsPromises);
+    // Apply filters
+    let filtered = results;
 
-    const newsMap = new Map<string, RawNewsItem[]>();
-    topMovers.forEach((mover, idx) => {
-      const newsResult = newsResults[idx];
-      if (newsResult.status === 'fulfilled') {
-        newsMap.set(mover.ticker, newsResult.value);
-      }
+    if (request.filters.minPrice != null) {
+      filtered = filtered.filter(r => r.price >= request.filters.minPrice!);
+    }
+
+    if (request.filters.maxPrice != null) {
+      filtered = filtered.filter(r => r.price <= request.filters.maxPrice!);
+    }
+
+    if (request.filters.minVolume != null) {
+      filtered = filtered.filter(r => r.volume >= request.filters.minVolume!);
+    }
+
+    // Sort by explosivePotential
+    filtered.sort((a, b) => b.explosivePotential - a.explosivePotential);
+
+    console.log(`[LiveScan] Returning ${filtered.length} results`);
+
+    return new Response(JSON.stringify(filtered), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
-    // Enrich results with news data
-    const finalResults: ScanResult[] = intermediateResults.map(({ ticker, result }) => {
-      const news = newsMap.get(ticker);
-      if (news && news.length > 0) {
-        const { catalystSummary, primary, catalystTags } = buildCatalystFromNews(news);
-        return {
-          ...result,
-          catalystSummary,
-          tags: Array.from(new Set([...result.tags, ...catalystTags])),
-          primaryNewsHeadline: primary?.headline,
-          primaryNewsUrl: primary?.url,
-          primaryNewsDatetime: primary?.datetime,
-        };
-      }
-      return result;
-    });
-
-    // Sort by explosive potential
-    finalResults.sort((a, b) => b.explosivePotential - a.explosivePotential);
-
-    console.log(`Returning ${finalResults.length} results`);
-
-    return new Response(
-      JSON.stringify({ results: finalResults }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
   } catch (error) {
-    console.error('Live scan error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[LiveScan] Error:', error);
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: String(error) }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
     );
   }
 });
