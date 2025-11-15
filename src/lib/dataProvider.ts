@@ -162,12 +162,15 @@ class MockMarketDataProvider implements MarketDataProvider {
 }
 
 /**
- * Live Market Data Provider (Placeholder)
+ * Multi-Source Live Market Data Provider
  * 
- * Routes live data requests through a Next.js API route to keep
- * API keys server-side and avoid CORS issues.
+ * Aggregates data from multiple market APIs (Finnhub, Polygon, IEX, etc.)
+ * by calling a Next.js API route that merges quotes server-side.
+ * 
+ * This keeps API keys secure on the server and provides a unified
+ * interface for multiple data sources.
  */
-class LiveMarketDataProvider implements MarketDataProvider {
+class MultiSourceLiveMarketDataProvider implements MarketDataProvider {
   async runScan(request: ScanRequest): Promise<ScanResult[]> {
     try {
       const res = await fetch('/api/live-scan', {
@@ -177,22 +180,25 @@ class LiveMarketDataProvider implements MarketDataProvider {
       });
 
       if (!res.ok) {
-        throw new Error(`Live scan failed with status ${res.status}: ${res.statusText}`);
+        const errorText = await res.text();
+        throw new Error(
+          `Live scan failed with status ${res.status}: ${res.statusText}. ${errorText}`
+        );
       }
 
       const json = await res.json();
       const results = json.results as ScanResult[];
       
       if (!Array.isArray(results)) {
-        throw new Error('Invalid response from live scan API');
+        throw new Error('Invalid response from live scan API - expected results array');
       }
 
       return results;
     } catch (err) {
-      console.error('LiveMarketDataProvider.runScan error:', err);
+      console.error('MultiSourceLiveMarketDataProvider.runScan error:', err);
       throw new Error(
         `Live data provider failed: ${err instanceof Error ? err.message : 'Unknown error'}. ` +
-        'Check that the API route is configured and API keys are set.'
+        'Check that the API route is configured and API keys (FINNHUB_API_KEY) are set.'
       );
     }
   }
@@ -200,7 +206,7 @@ class LiveMarketDataProvider implements MarketDataProvider {
 
 // Singleton instances
 const mockProvider = new MockMarketDataProvider();
-const liveProvider = new LiveMarketDataProvider();
+const liveProvider = new MultiSourceLiveMarketDataProvider();
 
 /**
  * Get the appropriate market data provider based on data mode
