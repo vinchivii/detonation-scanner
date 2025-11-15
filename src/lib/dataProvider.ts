@@ -164,24 +164,37 @@ class MockMarketDataProvider implements MarketDataProvider {
 /**
  * Live Market Data Provider (Placeholder)
  * 
- * TODO: Implement this class to connect to real market data APIs:
- * 
- * 1. Initialize with API keys from environment variables
- * 2. Implement runScan to:
- *    - Build query parameters from ScanRequest filters
- *    - Call market data API (Polygon.io, Finnhub, etc.)
- *    - Fetch real-time price, volume, and fundamental data
- *    - Calculate technical indicators (RSI, MACD, etc.)
- *    - Fetch catalyst data (earnings dates, FDA approvals, etc.)
- *    - Score stocks and build ScoreBreakdown from real metrics
- *    - Map API responses to ScanResult objects
- * 3. Handle API errors, rate limits, and retries
- * 4. Cache results appropriately
+ * Routes live data requests through a Next.js API route to keep
+ * API keys server-side and avoid CORS issues.
  */
 class LiveMarketDataProvider implements MarketDataProvider {
   async runScan(request: ScanRequest): Promise<ScanResult[]> {
-    // TODO: Implement live market data integration
-    throw new Error('Live market data provider not yet implemented. Please use mock mode.');
+    try {
+      const res = await fetch('/api/live-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Live scan failed with status ${res.status}: ${res.statusText}`);
+      }
+
+      const json = await res.json();
+      const results = json.results as ScanResult[];
+      
+      if (!Array.isArray(results)) {
+        throw new Error('Invalid response from live scan API');
+      }
+
+      return results;
+    } catch (err) {
+      console.error('LiveMarketDataProvider.runScan error:', err);
+      throw new Error(
+        `Live data provider failed: ${err instanceof Error ? err.message : 'Unknown error'}. ` +
+        'Check that the API route is configured and API keys are set.'
+      );
+    }
   }
 }
 
@@ -198,9 +211,7 @@ const liveProvider = new LiveMarketDataProvider();
 export function getMarketDataProvider(mode: DataMode = appConfig.dataMode): MarketDataProvider {
   switch (mode) {
     case 'live':
-      // For now, fall back to mock until live provider is implemented
-      console.warn('Live data mode requested but not yet implemented. Falling back to mock data.');
-      return mockProvider;
+      return liveProvider;
     case 'mock':
     default:
       return mockProvider;

@@ -1,6 +1,6 @@
 import { ScanRequest, ScanResult } from './types';
 import { getMarketDataProvider } from './dataProvider';
-import { appConfig } from './config';
+import { appConfig, DataMode } from './config';
 
 /**
  * Main Scan Engine Entry Point
@@ -17,6 +17,7 @@ import { appConfig } from './config';
  * Run a stock scan based on the provided request
  * 
  * @param request - The scan configuration including mode and filters
+ * @param modeOverride - Optional data mode override (mock or live)
  * @returns Promise resolving to an array of scan results
  * 
  * @example
@@ -28,10 +29,10 @@ import { appConfig } from './config';
  *     sectors: ['Biotech'],
  *     minVolume: 1000000
  *   }
- * });
+ * }, 'live');
  * ```
  */
-export async function runScan(request: ScanRequest): Promise<ScanResult[]> {
-  const provider = getMarketDataProvider(appConfig.dataMode);
+export async function runScan(request: ScanRequest, modeOverride?: DataMode): Promise<ScanResult[]> {
+  const provider = getMarketDataProvider(modeOverride ?? appConfig.dataMode);
   return provider.runScan(request);
 }

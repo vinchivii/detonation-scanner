@@ -5,7 +5,8 @@ import { ScanSummaryBar } from '@/components/scan/ScanSummaryBar';
 import { ScanResultsTable } from '@/components/scan/ScanResultsTable';
 import { ScanDetailDrawer } from '@/components/scan/ScanDetailDrawer';
 import { Button } from '@/components/ui/button';
-import { ScanMode, ScanFilters, ScanResult, ScanRequest, SavedScanProfile, WatchlistItem } from '@/lib/types';
+import { ScanMode, ScanFilters, ScanResult, ScanRequest, SavedScanProfile, WatchlistItem, ScanHistoryEntry } from '@/lib/types';
+import { DataMode, appConfig } from '@/lib/config';
 import { runScan } from '@/lib/scanEngine';
 import { storage } from '@/lib/storage';
 import { exportScanResultsToCsv, downloadCsv, generateTimestampedFilename } from '@/lib/export';
@@ -32,12 +33,23 @@ const Index = () => {
   // Watchlist State
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
 
+  // Scan History State
+  const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>([]);
+
+  // Data Mode State
+  const [dataMode, setDataMode] = useState<DataMode>('mock');
+
   // Load saved data from localStorage on mount
   useEffect(() => {
     const initialSaved = storage.getSavedScans();
     const initialWatchlist = storage.getWatchlist();
+    const initialHistory = storage.getScanHistory();
+    const initialDataMode = storage.getDataMode();
+    
     setSavedScans(initialSaved);
     setWatchlist(initialWatchlist);
+    setScanHistory(initialHistory);
+    setDataMode(initialDataMode ?? appConfig.dataMode);
   }, []);
 
   // Persist saved scans to localStorage
@@ -49,6 +61,16 @@ const Index = () => {
   useEffect(() => {
     storage.setWatchlist(watchlist);
   }, [watchlist]);
+
+  // Persist scan history to localStorage
+  useEffect(() => {
+    storage.setScanHistory(scanHistory);
+  }, [scanHistory]);
+
+  // Persist data mode to localStorage
+  useEffect(() => {
+    storage.setDataMode(dataMode);
+  }, [dataMode]);
 
   // Calculate summary metrics
   const averageExplosivePotential = results.length > 0
@@ -68,9 +90,12 @@ const Index = () => {
     };
 
     try {
-      const scanResults = await runScan(request);
+      const scanResults = await runScan(request, dataMode);
       setResults(scanResults);
       setLastRunAt(new Date().toLocaleTimeString());
+      
+      // Log to scan history
+      logScanToHistory(request, scanResults.length);
       
       if (scanResults.length === 0) {
         toast({
@@ -85,14 +110,64 @@ const Index = () => {
         });
       }
     } catch (error) {
-      toast({
-        title: 'Scan Failed',
-        description: 'An error occurred while scanning. Please try again.',
-        variant: 'destructive',
-      });
+      // If live mode fails, try to fall back to mock
+      if (dataMode === 'live') {
+        toast({
+          title: 'Live Engine Failed',
+          description: 'Falling back to mock data. Check API configuration.',
+          variant: 'destructive',
+        });
+        
+        try {
+          const fallbackResults = await runScan(request, 'mock');
+          setResults(fallbackResults);
+          logScanToHistory(request, fallbackResults.length, true);
+        } catch (fallbackError) {
+          toast({
+            title: 'Scan Failed',
+            description: 'An error occurred. Please try again.',
+            variant: 'destructive',
+          });
+        }
+      } else {
+        toast({
+          title: 'Scan Failed',
+          description: 'An error occurred while scanning. Please try again.',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setIsScanning(false);
     }
+  };
+
+  // Helper to log scan to history
+  const logScanToHistory = (request: ScanRequest, resultCount: number, wasFallback = false) => {
+    const filtersSummary = makeFiltersSummary(request.filters);
+    
+    const entry: ScanHistoryEntry = {
+      id: crypto.randomUUID?.() ?? `h-${Date.now()}`,
+      runAt: new Date().toISOString(),
+      mode: request.mode,
+      dataMode: wasFallback ? 'mock' : dataMode,
+      filtersSummary,
+      resultCount,
+    };
+
+    setScanHistory(prev => [entry, ...prev].slice(0, 50)); // Keep last 50
+  };
+
+  // Helper to create filters summary
+  const makeFiltersSummary = (filters: ScanFilters): string => {
+    const parts: string[] = [];
+    
+    if (filters.marketCap !== 'any') parts.push(filters.marketCap);
+    if (filters.minPrice) parts.push(`$${filters.minPrice}+`);
+    if (filters.maxPrice) parts.push(`$${filters.maxPrice}-`);
+    if (filters.minVolume) parts.push(`vol>${(filters.minVolume / 1000000).toFixed(1)}M`);
+    if (filters.sectors.length > 0) parts.push(filters.sectors.slice(0, 2).join(','));
+    
+    return parts.length > 0 ? parts.join(' | ') : 'No filters';
   };
 
   // Save current scan configuration as a profile
@@ -231,6 +306,9 @@ const Index = () => {
       watchlist={watchlist}
       onSelectWatchlistItem={handleSelectWatchlistItem}
       onRemoveWatchlistItem={handleRemoveWatchlistItem}
+      scanHistory={scanHistory}
+      dataMode={dataMode}
+      onChangeDataMode={setDataMode}
     >
       <div className="p-6 space-y-6">
         <ScanControls

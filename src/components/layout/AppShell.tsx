@@ -1,8 +1,11 @@
 import { ReactNode } from 'react';
 import { Activity, BarChart3, TrendingUp, Zap } from 'lucide-react';
-import { ScanMode, SCAN_MODE_LABELS, SavedScanProfile, WatchlistItem } from '@/lib/types';
+import { ScanMode, SCAN_MODE_LABELS, SavedScanProfile, WatchlistItem, ScanHistoryEntry } from '@/lib/types';
+import { DataMode } from '@/lib/config';
 import { SavedScansPanel } from '@/components/scan/SavedScansPanel';
 import { WatchlistPanel } from '@/components/scan/WatchlistPanel';
+import { ScanHistoryPanel } from '@/components/scan/ScanHistoryPanel';
+import { SettingsPanel } from '@/components/system/SettingsPanel';
 import { EngineStatus } from '@/components/system/EngineStatus';
 import { cn } from '@/lib/utils';
 
@@ -16,6 +19,9 @@ interface AppShellProps {
   watchlist: WatchlistItem[];
   onSelectWatchlistItem: (item: WatchlistItem) => void;
   onRemoveWatchlistItem: (id: string) => void;
+  scanHistory: ScanHistoryEntry[];
+  dataMode: DataMode;
+  onChangeDataMode: (mode: DataMode) => void;
 }
 
 const SCAN_MODE_ICONS: Record<ScanMode, typeof Activity> = {
@@ -35,6 +41,9 @@ export function AppShell({
   watchlist,
   onSelectWatchlistItem,
   onRemoveWatchlistItem,
+  scanHistory,
+  dataMode,
+  onChangeDataMode,
 }: AppShellProps) {
   return (
     <div className="flex min-h-screen w-full bg-background">
@@ -91,13 +100,13 @@ export function AppShell({
 
           <div className="mt-8 pt-8 border-t border-sidebar-border">
             <p className="px-3 py-2 text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
-              Watchlist
+              Scan History
             </p>
-            <WatchlistPanel
-              items={watchlist}
-              onSelect={onSelectWatchlistItem}
-              onRemove={onRemoveWatchlistItem}
-            />
+            <ScanHistoryPanel entries={scanHistory} />
+          </div>
+
+          <div className="mt-8 pt-8 border-t border-sidebar-border">
+            <SettingsPanel dataMode={dataMode} onChangeDataMode={onChangeDataMode} />
           </div>
         </nav>
 
