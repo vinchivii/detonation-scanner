@@ -19,6 +19,7 @@ const MARKET_CAP_OPTIONS: { value: MarketCapRange; label: string }[] = [
   { value: 'micro', label: 'Micro (<$300M)' },
   { value: 'small', label: 'Small ($300M-$2B)' },
   { value: 'mid', label: 'Mid ($2B-$10B)' },
+  { value: 'large', label: 'Large ($10B+)' },
   { value: 'any', label: 'Any Size' },
 ];
 

@@ -898,9 +898,26 @@ serve(async (req) => {
       results.push(result);
     }
 
-    // Apply filters
+    // Apply comprehensive filters
     let filtered = results;
 
+    // Helper function to get market cap bucket
+    function getMarketCapBucket(marketCap: number): 'micro' | 'small' | 'mid' | 'large' {
+      if (marketCap < 300_000_000) return 'micro';
+      if (marketCap < 2_000_000_000) return 'small';
+      if (marketCap < 10_000_000_000) return 'mid';
+      return 'large';
+    }
+
+    // Apply market cap filter
+    if (request.filters.marketCap !== 'any') {
+      filtered = filtered.filter(r => {
+        const bucket = getMarketCapBucket(r.marketCap);
+        return bucket === request.filters.marketCap;
+      });
+    }
+
+    // Apply price filters
     if (request.filters.minPrice != null) {
       filtered = filtered.filter(r => r.price >= request.filters.minPrice!);
     }
@@ -909,14 +926,20 @@ serve(async (req) => {
       filtered = filtered.filter(r => r.price <= request.filters.maxPrice!);
     }
 
+    // Apply volume filter
     if (request.filters.minVolume != null) {
       filtered = filtered.filter(r => r.volume >= request.filters.minVolume!);
+    }
+
+    // Apply sector filter
+    if (request.filters.sectors && request.filters.sectors.length > 0) {
+      filtered = filtered.filter(r => request.filters.sectors.includes(r.sector));
     }
 
     // Sort by explosivePotential
     filtered.sort((a, b) => b.explosivePotential - a.explosivePotential);
 
-    console.log(`[LiveScan] Returning ${filtered.length} results`);
+    console.log(`[LiveScan] Returning ${filtered.length} results after filtering from ${results.length} total`);
 
     return new Response(JSON.stringify(filtered), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
