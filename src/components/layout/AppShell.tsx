@@ -1,7 +1,6 @@
 import { ReactNode } from 'react';
 import { Activity, BarChart3, TrendingUp, Zap } from 'lucide-react';
 import { ScanMode, SCAN_MODE_LABELS, SavedScanProfile, WatchlistItem, ScanHistoryEntry } from '@/lib/types';
-import { DataMode } from '@/lib/config';
 import { SavedScansPanel } from '@/components/scan/SavedScansPanel';
 import { WatchlistPanel } from '@/components/scan/WatchlistPanel';
 import { ScanHistoryPanel } from '@/components/scan/ScanHistoryPanel';
@@ -20,8 +19,6 @@ interface AppShellProps {
   onSelectWatchlistItem: (item: WatchlistItem) => void;
   onRemoveWatchlistItem: (id: string) => void;
   scanHistory: ScanHistoryEntry[];
-  dataMode: DataMode;
-  onChangeDataMode: (mode: DataMode) => void;
 }
 
 const SCAN_MODE_ICONS: Record<ScanMode, typeof Activity> = {
@@ -42,8 +39,6 @@ export function AppShell({
   onSelectWatchlistItem,
   onRemoveWatchlistItem,
   scanHistory,
-  dataMode,
-  onChangeDataMode,
 }: AppShellProps) {
   return (
     <div className="flex min-h-screen w-full bg-background">
@@ -106,14 +101,14 @@ export function AppShell({
           </div>
 
           <div className="mt-8 pt-8 border-t border-sidebar-border">
-            <SettingsPanel dataMode={dataMode} onChangeDataMode={onChangeDataMode} />
+            <SettingsPanel />
           </div>
         </nav>
 
         <div className="p-4 border-t border-sidebar-border">
           <div className="bg-sidebar-accent/30 rounded-lg p-3">
             <p className="text-xs text-sidebar-foreground/70 leading-relaxed">
-              <span className="font-semibold text-sidebar-primary">Note:</span> Data currently mocked for development. Live market APIs will be integrated in the next phase.
+              <span className="font-semibold text-sidebar-primary">Live Market Data:</span> Connected to real-time market APIs for accurate scanning and analysis.
             </p>
           </div>
         </div>

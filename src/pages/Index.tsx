@@ -7,7 +7,6 @@ import { ScanDetailDrawer } from '@/components/scan/ScanDetailDrawer';
 import { FiltersSummary } from '@/components/scan/FiltersSummary';
 import { Button } from '@/components/ui/button';
 import { ScanMode, ScanFilters, ScanResult, ScanRequest, SavedScanProfile, WatchlistItem, ScanHistoryEntry } from '@/lib/types';
-import { DataMode, appConfig } from '@/lib/config';
 import { runScan } from '@/lib/scanEngine';
 import { storage } from '@/lib/storage';
 import { exportScanResultsToCsv, downloadCsv, generateTimestampedFilename } from '@/lib/export';
@@ -37,20 +36,15 @@ const Index = () => {
   // Scan History State
   const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>([]);
 
-  // Data Mode State
-  const [dataMode, setDataMode] = useState<DataMode>('mock');
-
   // Load saved data from localStorage on mount
   useEffect(() => {
     const initialSaved = storage.getSavedScans();
     const initialWatchlist = storage.getWatchlist();
     const initialHistory = storage.getScanHistory();
-    const initialDataMode = storage.getDataMode();
     
     setSavedScans(initialSaved);
     setWatchlist(initialWatchlist);
     setScanHistory(initialHistory);
-    setDataMode(initialDataMode ?? appConfig.dataMode);
   }, []);
 
   // Persist saved scans to localStorage
@@ -67,11 +61,6 @@ const Index = () => {
   useEffect(() => {
     storage.setScanHistory(scanHistory);
   }, [scanHistory]);
-
-  // Persist data mode to localStorage
-  useEffect(() => {
-    storage.setDataMode(dataMode);
-  }, [dataMode]);
 
   // Calculate summary metrics
   const averageExplosivePotential = results.length > 0
@@ -94,7 +83,7 @@ const Index = () => {
     };
 
     try {
-      const scanResults = await runScan(request, dataMode);
+      const scanResults = await runScan(request, 'live');
       setResults(scanResults);
       setLastRunAt(new Date().toLocaleTimeString());
       
@@ -114,39 +103,19 @@ const Index = () => {
         });
       }
     } catch (error) {
-      // If live mode fails, try to fall back to mock
-      if (dataMode === 'live') {
-        toast({
-          title: 'Live Engine Failed',
-          description: 'Falling back to mock data. Check API configuration.',
-          variant: 'destructive',
-        });
-        
-        try {
-          const fallbackResults = await runScan(request, 'mock');
-          setResults(fallbackResults);
-          logScanToHistory(request, fallbackResults.length, true);
-        } catch (fallbackError) {
-          toast({
-            title: 'Scan Failed',
-            description: 'An error occurred. Please try again.',
-            variant: 'destructive',
-          });
-        }
-      } else {
-        toast({
-          title: 'Scan Failed',
-          description: 'An error occurred while scanning. Please try again.',
-          variant: 'destructive',
-        });
-      }
+      console.error('Scan error:', error);
+      toast({
+        title: 'Scan Failed',
+        description: error instanceof Error ? error.message : 'An error occurred while scanning. Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setIsScanning(false);
     }
   };
 
   // Helper to log scan to history
-  const logScanToHistory = async (request: ScanRequest, resultCount: number, wasFallback = false) => {
+  const logScanToHistory = async (request: ScanRequest, resultCount: number) => {
     const { buildFiltersSummary } = await import('@/lib/filterUtils');
     const filtersSummary = buildFiltersSummary(request.filters);
     
@@ -154,7 +123,7 @@ const Index = () => {
       id: crypto.randomUUID?.() ?? `h-${Date.now()}`,
       runAt: new Date().toISOString(),
       mode: request.mode,
-      dataMode: wasFallback ? 'mock' : dataMode,
+      dataMode: 'live',
       filtersSummary,
       resultCount,
     };
@@ -301,8 +270,6 @@ const Index = () => {
       onSelectWatchlistItem={handleSelectWatchlistItem}
       onRemoveWatchlistItem={handleRemoveWatchlistItem}
       scanHistory={scanHistory}
-      dataMode={dataMode}
-      onChangeDataMode={setDataMode}
     >
       <div className="p-6 space-y-6">
         <ScanControls
