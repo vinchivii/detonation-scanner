@@ -2,7 +2,7 @@ export type ScanMode = 'daily-volatility' | 'catalyst-hunter' | 'cmbm-style' | '
 export type MomentumGrade = 'A' | 'B' | 'C' | 'D';
 export type Sentiment = 'Long' | 'Short' | 'Neutral';
 export type RiskLevel = 'Low' | 'Medium' | 'High';
-export type MarketCapRange = 'micro' | 'small' | 'mid' | 'any';
+export type MarketCapRange = 'micro' | 'small' | 'mid' | 'large' | 'any';
 
 export interface ScoreBreakdown {
   catalysts: number;

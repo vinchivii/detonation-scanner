@@ -152,10 +152,9 @@ class MockMarketDataProvider implements MarketDataProvider {
 
     let results = companies.map(c => this.generateMockResult(request.mode, c));
 
-    // Apply filters
-    if (request.filters.minPrice) results = results.filter(r => r.price >= request.filters.minPrice!);
-    if (request.filters.maxPrice) results = results.filter(r => r.price <= request.filters.maxPrice!);
-    if (request.filters.minVolume) results = results.filter(r => r.volume >= request.filters.minVolume!);
+    // Apply all filters using shared filter utilities
+    const { applyFiltersToResults } = await import('./filterUtils');
+    results = applyFiltersToResults(results, request.filters);
 
     return results.sort((a, b) => b.explosivePotential - a.explosivePotential);
   }
@@ -184,7 +183,8 @@ class MultiSourceLiveMarketDataProvider implements MarketDataProvider {
         throw new Error(`Live scan failed: ${error.message}`);
       }
 
-      const results = data?.results as ScanResult[];
+      // Edge function returns results array directly
+      const results = data as ScanResult[];
       
       if (!Array.isArray(results)) {
         throw new Error('Invalid response from live scan function - expected results array');

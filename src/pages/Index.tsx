@@ -4,6 +4,7 @@ import { ScanControls } from '@/components/scan/ScanControls';
 import { ScanSummaryBar } from '@/components/scan/ScanSummaryBar';
 import { ScanResultsTable } from '@/components/scan/ScanResultsTable';
 import { ScanDetailDrawer } from '@/components/scan/ScanDetailDrawer';
+import { FiltersSummary } from '@/components/scan/FiltersSummary';
 import { Button } from '@/components/ui/button';
 import { ScanMode, ScanFilters, ScanResult, ScanRequest, SavedScanProfile, WatchlistItem, ScanHistoryEntry } from '@/lib/types';
 import { DataMode, appConfig } from '@/lib/config';
@@ -84,9 +85,12 @@ const Index = () => {
     setResults([]);
     setSelectedResult(null);
 
+    // Import filter utilities
+    const { normalizeFilters } = await import('@/lib/filterUtils');
+
     const request: ScanRequest = {
       mode: scanMode,
-      filters,
+      filters: normalizeFilters(filters),
     };
 
     try {
@@ -142,8 +146,9 @@ const Index = () => {
   };
 
   // Helper to log scan to history
-  const logScanToHistory = (request: ScanRequest, resultCount: number, wasFallback = false) => {
-    const filtersSummary = makeFiltersSummary(request.filters);
+  const logScanToHistory = async (request: ScanRequest, resultCount: number, wasFallback = false) => {
+    const { buildFiltersSummary } = await import('@/lib/filterUtils');
+    const filtersSummary = buildFiltersSummary(request.filters);
     
     const entry: ScanHistoryEntry = {
       id: crypto.randomUUID?.() ?? `h-${Date.now()}`,
@@ -157,23 +162,12 @@ const Index = () => {
     setScanHistory(prev => [entry, ...prev].slice(0, 50)); // Keep last 50
   };
 
-  // Helper to create filters summary
-  const makeFiltersSummary = (filters: ScanFilters): string => {
-    const parts: string[] = [];
-    
-    if (filters.marketCap !== 'any') parts.push(filters.marketCap);
-    if (filters.minPrice) parts.push(`$${filters.minPrice}+`);
-    if (filters.maxPrice) parts.push(`$${filters.maxPrice}-`);
-    if (filters.minVolume) parts.push(`vol>${(filters.minVolume / 1000000).toFixed(1)}M`);
-    if (filters.sectors.length > 0) parts.push(filters.sectors.slice(0, 2).join(','));
-    
-    return parts.length > 0 ? parts.join(' | ') : 'No filters';
-  };
-
   // Save current scan configuration as a profile
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     const name = window.prompt('Enter a name for this scan profile:');
     if (!name) return;
+
+    const { normalizeFilters } = await import('@/lib/filterUtils');
 
     const description = window.prompt('Enter a description (optional):') || undefined;
 
@@ -182,7 +176,7 @@ const Index = () => {
       name,
       description,
       mode: scanMode,
-      filters: { ...filters },
+      filters: normalizeFilters(filters),
       createdAt: new Date().toISOString(),
     };
 
@@ -319,6 +313,8 @@ const Index = () => {
           onSaveProfile={handleSaveProfile}
           isScanning={isScanning}
         />
+
+        <FiltersSummary filters={filters} />
 
         <ScanSummaryBar
           mode={scanMode}
