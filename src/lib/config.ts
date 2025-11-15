@@ -12,18 +12,10 @@ export type DataMode = 'mock' | 'live';
 /**
  * Main application configuration
  * 
- * TODO: In a future phase, dataMode could be set from:
- * - Environment variable: process.env.NEXT_PUBLIC_DATA_MODE
- * - User settings toggle in a settings page
- * - Runtime configuration API
- * 
- * Note: appConfig.dataMode serves as the DEFAULT fallback mode.
- * The actual runtime mode is stored in localStorage and controlled
- * by UI state, allowing users to switch between mock and live data
- * without code changes.
+ * The app now runs exclusively in live mode with real market data.
  */
 export const appConfig = {
-  dataMode: 'mock' as DataMode,
+  dataMode: 'live' as DataMode,
 };
 
 /**
