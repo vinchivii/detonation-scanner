@@ -1,20 +1,4 @@
-import { ScanRequest, ScanResult, ScanMode, MomentumGrade, Sentiment } from './types';
-
-/**
- * Mock Scan Engine for Detonation Scanner
- * 
- * TODO: In production, this will integrate with real-time stock data APIs:
- * - Polygon.io for real-time price data and historical charts
- * - Finnhub for news, earnings, and catalyst data
- * - Alpha Vantage for fundamental data
- * - Custom WebSocket connections for live market data
- * 
- * The scan engine will:
- * 1. Fetch real-time market data based on filters
- * 2. Apply technical analysis algorithms (RSI, MACD, volume analysis)
- * 3. Score stocks based on momentum, volatility, and catalyst proximity
- * 4. Return ranked results with live data
- */
+import { ScanRequest, ScanResult, ScanMode, MomentumGrade, Sentiment, RiskLevel, ScoreBreakdown } from './types';
 
 const MOCK_COMPANIES = [
   { ticker: 'NVDA', name: 'NVIDIA Corporation', sector: 'Technology' },
@@ -32,141 +16,74 @@ const MOCK_COMPANIES = [
   { ticker: 'SAVA', name: 'Cassava Sciences', sector: 'Biotech' },
   { ticker: 'CRSP', name: 'CRISPR Therapeutics', sector: 'Biotech' },
   { ticker: 'CVNA', name: 'Carvana Co', sector: 'Retail' },
+  { ticker: 'FCEL', name: 'FuelCell Energy', sector: 'Energy' },
+  { ticker: 'PLUG', name: 'Plug Power Inc', sector: 'Energy' },
 ];
 
-const CATALYST_TEMPLATES = [
-  'FDA approval decision expected within 30 days',
-  'Earnings report next week, beat expected',
-  'Major partnership announcement pending',
-  'New product launch scheduled',
-  'Clinical trial results due imminently',
-  'Analyst upgrade cycle beginning',
-  'Short squeeze setup with high SI',
-  'Institutional accumulation detected',
-  'Breakout from consolidation pattern',
-  'Volume surge with positive news flow',
-];
+const randomInRange = (min: number, max: number) => min + Math.random() * (max - min);
+const randomPick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
-const RISK_TEMPLATES = [
-  'High volatility, position sizing critical',
-  'Low float, expect rapid price swings',
-  'Regulatory risk present',
-  'Crowded trade, watch for reversal',
-  'News-dependent, monitor closely',
-  'Elevated short interest',
-  'Technical resistance nearby',
-  'Market cap volatility risk',
-];
-
-function generateMockResult(
-  mode: ScanMode,
-  company: typeof MOCK_COMPANIES[0],
-  index: number
-): ScanResult {
-  // Customize data based on scan mode
-  let explosivePotential: number;
-  let momentumGrade: MomentumGrade;
-  let sentiment: Sentiment;
-  let volume: number;
-  let float: number;
-  let tags: string[];
-
-  const basePrice = 10 + Math.random() * 190;
-  const changePercent = (Math.random() * 20 - 5).toFixed(2);
-
+function generateScoreBreakdown(mode: ScanMode): ScoreBreakdown {
   switch (mode) {
-    case 'cmbm-style':
-      // Low float, high explosive potential
-      explosivePotential = 70 + Math.random() * 30;
-      momentumGrade = ['A', 'A', 'B'][Math.floor(Math.random() * 3)] as MomentumGrade;
-      sentiment = 'Long';
-      volume = 1000000 + Math.random() * 5000000;
-      float = 5000000 + Math.random() * 15000000; // Low float
-      tags = ['Low Float', 'High SI', 'Squeeze Setup'];
-      break;
-
-    case 'momentum':
-      explosivePotential = 60 + Math.random() * 25;
-      momentumGrade = ['A', 'A', 'B'][Math.floor(Math.random() * 3)] as MomentumGrade;
-      sentiment = parseFloat(changePercent as string) > 0 ? 'Long' : 'Short';
-      volume = 2000000 + Math.random() * 10000000;
-      float = 20000000 + Math.random() * 100000000;
-      tags = ['Strong Momentum', 'Trend Following'];
-      break;
-
-    case 'catalyst':
-      explosivePotential = 55 + Math.random() * 35;
-      momentumGrade = ['A', 'B', 'B', 'C'][Math.floor(Math.random() * 4)] as MomentumGrade;
-      sentiment = 'Long';
-      volume = 1500000 + Math.random() * 8000000;
-      float = 30000000 + Math.random() * 150000000;
-      tags = ['Catalyst Play', 'Event Driven'];
-      break;
-
-    case 'daily-volatility':
-    default:
-      explosivePotential = 45 + Math.random() * 40;
-      momentumGrade = ['B', 'B', 'C'][Math.floor(Math.random() * 3)] as MomentumGrade;
-      sentiment = ['Long', 'Short', 'Neutral'][Math.floor(Math.random() * 3)] as Sentiment;
-      volume = 1000000 + Math.random() * 12000000;
-      float = 25000000 + Math.random() * 200000000;
-      tags = ['High Volatility', 'Day Trade'];
-      break;
+    case 'catalyst-hunter': return { catalysts: randomInRange(70, 95), momentum: randomInRange(40, 70), structure: randomInRange(50, 75), sentiment: randomInRange(55, 80) };
+    case 'momentum': return { catalysts: randomInRange(30, 60), momentum: randomInRange(75, 95), structure: randomInRange(65, 85), sentiment: randomInRange(60, 80) };
+    case 'cmbm-style': return { catalysts: randomInRange(60, 85), momentum: randomInRange(70, 90), structure: randomInRange(80, 98), sentiment: randomInRange(65, 90) };
+    default: return { catalysts: randomInRange(40, 70), momentum: randomInRange(50, 80), structure: randomInRange(45, 75), sentiment: randomInRange(40, 70) };
   }
+}
 
-  const marketCap = basePrice * float;
+function generateMockResult(mode: ScanMode, company: typeof MOCK_COMPANIES[0]): ScanResult {
+  const scoreBreakdown = generateScoreBreakdown(mode);
+  const explosivePotential = Math.round(scoreBreakdown.catalysts * 0.3 + scoreBreakdown.momentum * 0.25 + scoreBreakdown.structure * 0.25 + scoreBreakdown.sentiment * 0.2);
+  
+  const riskLevel: RiskLevel = mode === 'cmbm-style' || explosivePotential > 80 ? (Math.random() > 0.3 ? 'High' : 'Medium') : explosivePotential < 50 ? 'Low' : 'Medium';
+  
+  const basePrice = mode === 'cmbm-style' ? randomInRange(2, 25) : randomInRange(10, 180);
+  const changePercent = mode === 'momentum' ? randomInRange(2, 18) : randomInRange(-12, 22);
+  const volume = randomInRange(1000000, 15000000);
+  const float = mode === 'cmbm-style' ? randomInRange(5000000, 20000000) : randomInRange(20000000, 150000000);
+  const momentumGrade = randomPick(['A', 'B', 'C']) as MomentumGrade;
+  const sentiment: Sentiment = changePercent > 0 ? 'Long' : Math.random() > 0.7 ? 'Neutral' : 'Short';
 
   return {
     ticker: company.ticker,
     companyName: company.name,
     price: parseFloat(basePrice.toFixed(2)),
-    changePercent: parseFloat(changePercent as string),
-    volume,
-    marketCap,
-    float,
+    changePercent: parseFloat(changePercent.toFixed(2)),
+    volume: Math.round(volume),
+    marketCap: Math.round(basePrice * float),
+    float: Math.round(float),
     sector: company.sector,
     scanMode: mode,
-    catalystSummary: CATALYST_TEMPLATES[Math.floor(Math.random() * CATALYST_TEMPLATES.length)],
+    catalystSummary: `${company.ticker} showing strong setup with upcoming catalyst events and momentum buildup`,
     momentumGrade,
-    explosivePotential: Math.round(explosivePotential),
+    explosivePotential,
+    scoreBreakdown: {
+      catalysts: Math.round(scoreBreakdown.catalysts),
+      momentum: Math.round(scoreBreakdown.momentum),
+      structure: Math.round(scoreBreakdown.structure),
+      sentiment: Math.round(scoreBreakdown.sentiment),
+    },
     sentiment,
-    riskNotes: RISK_TEMPLATES[Math.floor(Math.random() * RISK_TEMPLATES.length)],
-    tags,
+    riskLevel,
+    riskNotes: riskLevel === 'High' ? 'High volatility, position sizing critical' : riskLevel === 'Medium' ? 'Moderate risk, standard management applies' : 'Lower risk, suitable for larger positions',
+    whyItMightMove: `Strong ${mode} setup with ${explosivePotential} explosive potential score`,
+    tags: mode === 'catalyst-hunter' ? ['Catalyst', 'Event Driven'] : mode === 'momentum' ? ['Momentum', 'Breakout'] : mode === 'cmbm-style' ? ['Low Float', 'Squeeze'] : ['Volatility', 'Day Trade'],
   };
 }
 
-/**
- * Run a stock scan based on the provided request
- * 
- * @param request - The scan configuration including mode and filters
- * @returns Promise resolving to an array of scan results
- */
 export async function runScan(request: ScanRequest): Promise<ScanResult[]> {
-  // TODO: Replace this with real API calls
-  // 1. Build query parameters from filters
-  // 2. Call market data API (e.g., Polygon.io)
-  // 3. Apply technical analysis
-  // 4. Score and rank results
-  // 5. Fetch additional catalyst/news data
-  
-  // Simulate network delay
   await new Promise(resolve => setTimeout(resolve, 1200 + Math.random() * 800));
-
-  // Generate 8-15 mock results
-  const resultCount = 8 + Math.floor(Math.random() * 8);
+  
   const shuffled = [...MOCK_COMPANIES].sort(() => Math.random() - 0.5);
-  const selectedCompanies = shuffled.slice(0, resultCount);
-
-  // Apply basic filter logic (sector filter)
-  const filteredCompanies = request.filters.sectors.length > 0
-    ? selectedCompanies.filter(c => request.filters.sectors.includes(c.sector))
-    : selectedCompanies;
-
-  // Generate results
-  const results = filteredCompanies.map((company, index) =>
-    generateMockResult(request.mode, company, index)
-  );
-
-  // Sort by explosive potential (descending)
+  const filtered = request.filters.sectors.length > 0 ? shuffled.filter(c => request.filters.sectors.includes(c.sector)) : shuffled;
+  const companies = filtered.length < 8 ? shuffled.slice(0, 12) : filtered.slice(0, 12);
+  
+  let results = companies.map(c => generateMockResult(request.mode, c));
+  
+  if (request.filters.minPrice) results = results.filter(r => r.price >= request.filters.minPrice!);
+  if (request.filters.maxPrice) results = results.filter(r => r.price <= request.filters.maxPrice!);
+  if (request.filters.minVolume) results = results.filter(r => r.volume >= request.filters.minVolume!);
+  
   return results.sort((a, b) => b.explosivePotential - a.explosivePotential);
 }

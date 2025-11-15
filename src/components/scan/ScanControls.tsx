@@ -18,7 +18,7 @@ const MARKET_CAP_OPTIONS: { value: MarketCapRange; label: string }[] = [
   { value: 'micro', label: 'Micro (<$300M)' },
   { value: 'small', label: 'Small ($300M-$2B)' },
   { value: 'mid', label: 'Mid ($2B-$10B)' },
-  { value: 'large', label: 'Large (>$10B)' },
+  { value: 'any', label: 'Any Size' },
 ];
 
 export function ScanControls({
@@ -28,11 +28,8 @@ export function ScanControls({
   onRunScan,
   isScanning,
 }: ScanControlsProps) {
-  const toggleMarketCap = (cap: MarketCapRange) => {
-    const newCaps = filters.marketCapRanges.includes(cap)
-      ? filters.marketCapRanges.filter(c => c !== cap)
-      : [...filters.marketCapRanges, cap];
-    onFiltersChange({ ...filters, marketCapRanges: newCaps });
+  const setMarketCap = (cap: MarketCapRange) => {
+    onFiltersChange({ ...filters, marketCap: cap });
   };
 
   const toggleSector = (sector: string) => {
@@ -60,9 +57,9 @@ export function ScanControls({
             {MARKET_CAP_OPTIONS.map(({ value, label }) => (
               <Badge
                 key={value}
-                variant={filters.marketCapRanges.includes(value) ? 'default' : 'outline'}
+                variant={filters.marketCap === value ? 'default' : 'outline'}
                 className="cursor-pointer hover:bg-accent"
-                onClick={() => toggleMarketCap(value)}
+                onClick={() => setMarketCap(value)}
               >
                 {label}
               </Badge>
@@ -81,10 +78,11 @@ export function ScanControls({
               type="number"
               min="0"
               step="0.01"
-              value={filters.priceMin}
+              value={filters.minPrice || ''}
               onChange={(e) =>
-                onFiltersChange({ ...filters, priceMin: parseFloat(e.target.value) || 0 })
+                onFiltersChange({ ...filters, minPrice: e.target.value ? parseFloat(e.target.value) : undefined })
               }
+              placeholder="No minimum"
               className="bg-background"
             />
           </div>
@@ -97,10 +95,11 @@ export function ScanControls({
               type="number"
               min="0"
               step="0.01"
-              value={filters.priceMax}
+              value={filters.maxPrice || ''}
               onChange={(e) =>
-                onFiltersChange({ ...filters, priceMax: parseFloat(e.target.value) || 1000 })
+                onFiltersChange({ ...filters, maxPrice: e.target.value ? parseFloat(e.target.value) : undefined })
               }
+              placeholder="No maximum"
               className="bg-background"
             />
           </div>
@@ -144,10 +143,11 @@ export function ScanControls({
             type="number"
             min="0"
             step="100000"
-            value={filters.minVolume}
+            value={filters.minVolume || ''}
             onChange={(e) =>
-              onFiltersChange({ ...filters, minVolume: parseInt(e.target.value) || 0 })
+              onFiltersChange({ ...filters, minVolume: e.target.value ? parseInt(e.target.value) : undefined })
             }
+            placeholder="No minimum"
             className="bg-background"
           />
         </div>
