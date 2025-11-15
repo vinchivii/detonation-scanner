@@ -84,3 +84,15 @@ export interface WatchlistItem {
   addedAt: string;
   result: ScanResult;
 }
+
+/**
+ * Scan History Entry - logs completed scans
+ */
+export interface ScanHistoryEntry {
+  id: string;
+  runAt: string;
+  mode: ScanMode;
+  dataMode: 'mock' | 'live';
+  filtersSummary: string;
+  resultCount: number;
+}

@@ -1,4 +1,5 @@
 import { SavedScanProfile, WatchlistItem } from './types';
+import { DataMode } from './config';
 
 /**
  * Local Storage Helper for Detonation Scanner
@@ -56,5 +57,35 @@ export const storage = {
    */
   setWatchlist(value: WatchlistItem[]): void {
     safeSetItem('detonationScanner.watchlist', value);
+  },
+
+  /**
+   * Get user's selected data mode
+   */
+  getDataMode(): DataMode {
+    const value = safeGetItem<string | null>('detonationScanner.dataMode', null);
+    if (value === 'live' || value === 'mock') return value;
+    return 'mock';
+  },
+
+  /**
+   * Save user's selected data mode
+   */
+  setDataMode(mode: DataMode): void {
+    safeSetItem('detonationScanner.dataMode', mode);
+  },
+
+  /**
+   * Get scan history entries
+   */
+  getScanHistory(): any[] {
+    return safeGetItem<any[]>('detonationScanner.scanHistory', []);
+  },
+
+  /**
+   * Save scan history entries
+   */
+  setScanHistory(entries: any[]): void {
+    safeSetItem('detonationScanner.scanHistory', entries);
   },
 };

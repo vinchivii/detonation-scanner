@@ -17,9 +17,16 @@ export type DataMode = 'mock' | 'live';
  * - User settings toggle in a settings page
  * - Runtime configuration API
  * 
- * For now, it remains hardcoded to 'mock' to ensure stable behavior
- * while we build out the infrastructure for live data integration.
+ * Note: appConfig.dataMode serves as the DEFAULT fallback mode.
+ * The actual runtime mode is stored in localStorage and controlled
+ * by UI state, allowing users to switch between mock and live data
+ * without code changes.
  */
 export const appConfig = {
   dataMode: 'mock' as DataMode,
 };
+
+/**
+ * Storage key for persisting user's selected data mode
+ */
+export const DATA_MODE_STORAGE_KEY = 'detonationScanner.dataMode';
