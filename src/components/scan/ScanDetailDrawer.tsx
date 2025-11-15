@@ -21,6 +21,13 @@ function formatNumber(num: number): string {
   return `$${num.toFixed(0)}`;
 }
 
+function formatVolume(num: number): string {
+  if (num >= 1e9) return `${(num / 1e9).toFixed(2)}B`;
+  if (num >= 1e6) return `${(num / 1e6).toFixed(1)}M`;
+  if (num >= 1e3) return `${(num / 1e3).toFixed(1)}K`;
+  return num.toLocaleString();
+}
+
 function getExplosivePotentialColor(score: number): string {
   if (score >= 75) return 'bg-explosive-high text-white';
   if (score >= 50) return 'bg-explosive-medium text-white';
@@ -115,7 +122,7 @@ export function ScanDetailDrawer({
             <Card className="p-4">
               <p className="text-sm text-muted-foreground mb-1">Volume</p>
               <p className="text-2xl font-bold text-foreground">
-                {formatNumber(result.volume)}
+                {formatVolume(result.volume)}
               </p>
             </Card>
 

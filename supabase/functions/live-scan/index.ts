@@ -135,6 +135,43 @@ function getFinnhubApiKey(): string {
   return key;
 }
 
+/**
+ * Fetch daily volume from Finnhub candles endpoint
+ * Used as fallback when quote endpoint doesn't provide volume
+ */
+async function fetchFinnhubDailyVolume(ticker: string): Promise<number | null> {
+  try {
+    const apiKey = getFinnhubApiKey();
+    
+    // Get current and previous day timestamps
+    const now = Math.floor(Date.now() / 1000);
+    const oneDayAgo = now - (24 * 60 * 60);
+    
+    const url = `${FINNHUB_BASE_URL}/stock/candle?symbol=${encodeURIComponent(ticker)}&resolution=D&from=${oneDayAgo}&to=${now}&token=${apiKey}`;
+    
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error(`Finnhub candle error for ${ticker}: ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+    
+    // Check if we got valid data
+    if (data.s !== 'ok' || !Array.isArray(data.v) || data.v.length === 0) {
+      return null;
+    }
+
+    // Get the most recent volume value (last element in array)
+    const volume = data.v[data.v.length - 1];
+    
+    return typeof volume === 'number' && volume > 0 ? volume : null;
+  } catch (err) {
+    console.error(`fetchFinnhubDailyVolume error for ${ticker}:`, err);
+    return null;
+  }
+}
+
 async function fetchFinnhubQuote(ticker: string): Promise<RawQuote | null> {
   try {
     const apiKey = getFinnhubApiKey();
@@ -152,12 +189,26 @@ async function fetchFinnhubQuote(ticker: string): Promise<RawQuote | null> {
       return null;
     }
 
+    // Try to get volume from quote first
+    let volume: number | null = typeof data.v === 'number' && data.v > 0 ? data.v : null;
+    
+    // If quote doesn't have volume, fallback to daily candle volume
+    if (volume == null) {
+      console.log(`[Finnhub] Quote volume missing for ${ticker} (got ${data.v}), fetching from candles...`);
+      volume = await fetchFinnhubDailyVolume(ticker);
+      if (volume != null) {
+        console.log(`[Finnhub] Successfully retrieved volume from candles for ${ticker}: ${volume}`);
+      } else {
+        console.log(`[Finnhub] No volume available from candles for ${ticker}`);
+      }
+    }
+
     return {
       source: 'finnhub',
       ticker,
       price: data.c,
       prevClose: data.pc,
-      volume: data.v ?? null,
+      volume,
       timestamp: data.t ? data.t * 1000 : Date.now(),
     };
   } catch (err) {
@@ -894,6 +945,11 @@ serve(async (req) => {
         primaryNewsUrl: primary?.url,
         primaryNewsDatetime: primary?.datetime,
       };
+
+      // Log volume for debugging
+      if (quote.volume == null) {
+        console.log(`[LiveScan] WARNING: No volume data for ${meta.symbol}, defaulting to 0`);
+      }
 
       results.push(result);
     }
