@@ -528,30 +528,33 @@ async function fetchMassiveQuote(ticker: string): Promise<RawQuote | null> {
       return null;
     }
 
-    // TODO: Update this endpoint path according to Massive's actual API structure
-    // Example placeholder - adjust based on Massive docs (formerly Polygon v2/aggs/ticker/{ticker}/prev)
-    const url = `${baseUrl}/v2/aggs/ticker/${encodeURIComponent(ticker)}/prev?apiKey=${apiKey}`;
+    const now = new Date();
+    const end = now.toISOString().slice(0, 10);
+    const startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const start = startDate.toISOString().slice(0, 10);
+
+    const url = `${baseUrl}/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${start}/${end}?adjusted=true&sort=desc&limit=2&apiKey=${encodeURIComponent(apiKey)}`;
 
     const res = await fetch(url);
     if (!res.ok) {
-      console.error(`Massive quote error for ${ticker}: ${res.status}`);
+      const txt = await res.text();
+      console.error(`Massive quote error for ${ticker}: ${res.status} ${txt}`);
       return null;
     }
 
     const data = await res.json();
-
-    // TODO: Map Massive's actual JSON fields into price/prevClose/volume/timestamp
-    // This mapping is a placeholder based on Polygon-style response structure
-    // Adjust according to actual Massive API response format
-    const results = data.results?.[0];
-    if (!results) {
+    const results: any[] = Array.isArray(data.results) ? data.results : [];
+    if (results.length === 0) {
       return null;
     }
 
-    const price = typeof results.c === 'number' ? results.c : null; // close price
-    const prevClose = typeof results.o === 'number' ? results.o : null; // open as prev close approximation
-    const volume = typeof results.v === 'number' ? results.v : null;
-    const timestamp = typeof results.t === 'number' ? results.t : null;
+    const latest = results[0];
+    const prev = results[1];
+
+    const price = typeof latest.c === 'number' ? latest.c : null;
+    const prevClose = typeof prev?.c === 'number' ? prev.c : (typeof latest.o === 'number' ? latest.o : null);
+    const volume = typeof latest.v === 'number' ? latest.v : null;
+    const timestamp = typeof latest.t === 'number' ? latest.t : null;
 
     if (price == null || prevClose == null) {
       return null;
@@ -683,8 +686,18 @@ function mergeRawQuotes(quotes: RawQuote[]): RawQuote | null {
   const primary = sorted[0];
   let volume = primary.volume;
   if (volume == null) {
+    // Prefer volume from other valid quotes first
     for (const q of sorted) {
-      if (q.volume != null) {
+      if (q.volume != null && q.volume > 0) {
+        volume = q.volume;
+        break;
+      }
+    }
+  }
+  if (volume == null) {
+    // As a last resort, scan all quotes (even partial ones) for any non-null volume
+    for (const q of quotes) {
+      if (q && q.volume != null && q.volume > 0) {
         volume = q.volume;
         break;
       }
