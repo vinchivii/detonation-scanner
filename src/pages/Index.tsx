@@ -14,13 +14,13 @@ import { toast } from '@/hooks/use-toast';
 import { Download } from 'lucide-react';
 
 const Index = () => {
-  const [scanMode, setScanMode] = useState<ScanMode>('daily-volatility');
   const [filters, setFilters] = useState<ScanFilters>({
     marketCap: 'any',
     minPrice: undefined,
     maxPrice: undefined,
     minVolume: undefined,
     sectors: [],
+    highVolatilityOnly: false,
   });
   const [isScanning, setIsScanning] = useState(false);
   const [results, setResults] = useState<ScanResult[]>([]);
@@ -78,7 +78,7 @@ const Index = () => {
     const { normalizeFilters } = await import('@/lib/filterUtils');
 
     const request: ScanRequest = {
-      mode: scanMode,
+      mode: 'unified',
       filters: normalizeFilters(filters),
     };
 
@@ -144,7 +144,7 @@ const Index = () => {
       id: crypto.randomUUID?.() ?? `profile-${Date.now()}`,
       name,
       description,
-      mode: scanMode,
+      mode: 'unified',
       filters: normalizeFilters(filters),
       createdAt: new Date().toISOString(),
     };
@@ -159,7 +159,6 @@ const Index = () => {
 
   // Load a saved profile
   const handleLoadProfile = (profile: SavedScanProfile) => {
-    setScanMode(profile.mode);
     setFilters(profile.filters);
     
     toast({
@@ -261,8 +260,8 @@ const Index = () => {
 
   return (
     <AppShell 
-      currentMode={scanMode} 
-      onModeChange={setScanMode}
+      currentMode={'unified'} 
+      onModeChange={() => {}}
       savedScans={savedScans}
       onLoadProfile={handleLoadProfile}
       onDeleteProfile={handleDeleteProfile}
@@ -273,7 +272,6 @@ const Index = () => {
     >
       <div className="p-6 space-y-6">
         <ScanControls
-          mode={scanMode}
           filters={filters}
           onFiltersChange={setFilters}
           onRunScan={handleRunScan}
@@ -284,7 +282,7 @@ const Index = () => {
         <FiltersSummary filters={filters} />
 
         <ScanSummaryBar
-          mode={scanMode}
+          mode={'unified'}
           resultCount={results.length}
           averageExplosivePotential={averageExplosivePotential}
           highRiskCount={highRiskCount}

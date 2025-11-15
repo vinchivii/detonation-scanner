@@ -1,4 +1,4 @@
-export type ScanMode = 'daily-volatility' | 'catalyst-hunter' | 'cmbm-style' | 'momentum';
+export type ScanMode = 'unified';
 export type MomentumGrade = 'A' | 'B' | 'C' | 'D';
 export type Sentiment = 'Long' | 'Short' | 'Neutral';
 export type RiskLevel = 'Low' | 'Medium' | 'High';
@@ -17,6 +17,7 @@ export interface ScanFilters {
   maxPrice?: number;
   minVolume?: number;
   sectors: string[];
+  highVolatilityOnly?: boolean;
 }
 
 export interface ScanRequest {
@@ -53,17 +54,11 @@ export interface ScanResult {
 export const SECTORS = ['Technology', 'Biotech', 'Energy', 'Defense', 'Retail', 'Finance', 'Healthcare', 'Industrial', 'Materials', 'Communications'];
 
 export const SCAN_MODE_LABELS: Record<ScanMode, string> = {
-  'daily-volatility': 'Daily Volatility',
-  'catalyst-hunter': 'Catalyst Hunter',
-  'cmbm-style': 'CMBM-Style',
-  'momentum': 'Momentum',
+  'unified': 'Unified Scan',
 };
 
 export const SCAN_MODE_DESCRIPTIONS: Record<ScanMode, string> = {
-  'daily-volatility': 'Scan for stocks with high daily volatility and breakout potential',
-  'catalyst-hunter': 'Find stocks with upcoming catalysts like FDA approvals, earnings, product launches',
-  'cmbm-style': 'Low float, high squeeze potential stocks with parabolic setup characteristics',
-  'momentum': 'Stocks showing strong technical momentum and sustained trend strength',
+  'unified': 'Comprehensive market scan driven by your custom filters',
 };
 
 /**
