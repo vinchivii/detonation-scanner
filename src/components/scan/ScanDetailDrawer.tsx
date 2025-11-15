@@ -2,12 +2,16 @@ import { ScanResult } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { X, TrendingUp, AlertTriangle, Target, Zap } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { X, TrendingUp, AlertTriangle, Target, Zap, BarChart3, Activity, MessageSquare, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ScanDetailDrawerProps {
   result: ScanResult | null;
   onClose: () => void;
+  onAddToWatchlist?: (result: ScanResult) => void;
+  onRemoveFromWatchlist?: (result: ScanResult) => void;
+  isInWatchlist?: boolean;
 }
 
 function formatNumber(num: number): string {
@@ -23,7 +27,25 @@ function getExplosivePotentialColor(score: number): string {
   return 'bg-explosive-low text-foreground';
 }
 
-export function ScanDetailDrawer({ result, onClose }: ScanDetailDrawerProps) {
+function getRiskLevelColor(level: string): string {
+  switch (level) {
+    case 'High':
+      return 'bg-destructive text-destructive-foreground';
+    case 'Medium':
+      return 'bg-explosive-medium text-white';
+    case 'Low':
+    default:
+      return 'bg-success text-success-foreground';
+  }
+}
+
+export function ScanDetailDrawer({ 
+  result, 
+  onClose, 
+  onAddToWatchlist, 
+  onRemoveFromWatchlist, 
+  isInWatchlist 
+}: ScanDetailDrawerProps) {
   if (!result) return null;
 
   return (
@@ -38,22 +60,43 @@ export function ScanDetailDrawer({ result, onClose }: ScanDetailDrawerProps) {
       <div className="fixed right-0 top-0 h-full w-full max-w-2xl bg-card border-l border-border shadow-2xl z-50 overflow-y-auto animate-in slide-in-from-right duration-300">
         <div className="p-6 space-y-6">
           {/* Header */}
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2 flex-wrap">
                 <h2 className="text-3xl font-bold text-foreground">{result.ticker}</h2>
                 <Badge
                   variant={result.sentiment === 'Long' ? 'default' : result.sentiment === 'Short' ? 'destructive' : 'secondary'}
                 >
                   {result.sentiment}
                 </Badge>
+                <Badge className={getRiskLevelColor(result.riskLevel)}>
+                  {result.riskLevel} Risk
+                </Badge>
               </div>
               <p className="text-lg text-muted-foreground">{result.companyName}</p>
               <p className="text-sm text-muted-foreground">{result.sector}</p>
             </div>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="w-5 h-5" />
-            </Button>
+            <div className="flex gap-2">
+              {(onAddToWatchlist || onRemoveFromWatchlist) && (
+                <Button
+                  variant={isInWatchlist ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    if (isInWatchlist && onRemoveFromWatchlist) {
+                      onRemoveFromWatchlist(result);
+                    } else if (!isInWatchlist && onAddToWatchlist) {
+                      onAddToWatchlist(result);
+                    }
+                  }}
+                >
+                  <Star className={cn('w-4 h-4 mr-2', isInWatchlist && 'fill-current')} />
+                  {isInWatchlist ? 'In Watchlist' : 'Add to Watchlist'}
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" onClick={onClose}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
           </div>
 
           {/* Key Metrics */}

@@ -4,13 +4,14 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Search, X } from 'lucide-react';
+import { Search, X, Save } from 'lucide-react';
 
 interface ScanControlsProps {
   mode: ScanMode;
   filters: ScanFilters;
   onFiltersChange: (filters: ScanFilters) => void;
   onRunScan: () => void;
+  onSaveProfile: () => void;
   isScanning: boolean;
 }
 
@@ -26,6 +27,7 @@ export function ScanControls({
   filters,
   onFiltersChange,
   onRunScan,
+  onSaveProfile,
   isScanning,
 }: ScanControlsProps) {
   const setMarketCap = (cap: MarketCapRange) => {
@@ -42,12 +44,23 @@ export function ScanControls({
   return (
     <Card className="p-6">
       <div className="space-y-6">
-        {/* Mode Description */}
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-2">Current Scan Mode</h3>
-          <p className="text-sm text-muted-foreground">
-            {SCAN_MODE_DESCRIPTIONS[mode]}
-          </p>
+        {/* Mode Description & Save Button */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-foreground mb-2">Current Scan Mode</h3>
+            <p className="text-sm text-muted-foreground">
+              {SCAN_MODE_DESCRIPTIONS[mode]}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onSaveProfile}
+            className="flex-shrink-0"
+          >
+            <Save className="w-4 h-4 mr-2" />
+            Save as Profile
+          </Button>
         </div>
 
         {/* Market Cap Filter */}

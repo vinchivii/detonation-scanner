@@ -1,12 +1,20 @@
 import { ReactNode } from 'react';
 import { Activity, BarChart3, TrendingUp, Zap } from 'lucide-react';
-import { ScanMode, SCAN_MODE_LABELS } from '@/lib/types';
+import { ScanMode, SCAN_MODE_LABELS, SavedScanProfile, WatchlistItem } from '@/lib/types';
+import { SavedScansPanel } from '@/components/scan/SavedScansPanel';
+import { WatchlistPanel } from '@/components/scan/WatchlistPanel';
 import { cn } from '@/lib/utils';
 
 interface AppShellProps {
   children: ReactNode;
   currentMode: ScanMode;
   onModeChange: (mode: ScanMode) => void;
+  savedScans: SavedScanProfile[];
+  onLoadProfile: (profile: SavedScanProfile) => void;
+  onDeleteProfile: (id: string) => void;
+  watchlist: WatchlistItem[];
+  onSelectWatchlistItem: (item: WatchlistItem) => void;
+  onRemoveWatchlistItem: (id: string) => void;
 }
 
 const SCAN_MODE_ICONS: Record<ScanMode, typeof Activity> = {
@@ -16,7 +24,17 @@ const SCAN_MODE_ICONS: Record<ScanMode, typeof Activity> = {
   'momentum': BarChart3,
 };
 
-export function AppShell({ children, currentMode, onModeChange }: AppShellProps) {
+export function AppShell({ 
+  children, 
+  currentMode, 
+  onModeChange,
+  savedScans,
+  onLoadProfile,
+  onDeleteProfile,
+  watchlist,
+  onSelectWatchlistItem,
+  onRemoveWatchlistItem,
+}: AppShellProps) {
   return (
     <div className="flex min-h-screen w-full bg-background">
       {/* Sidebar */}
@@ -33,7 +51,7 @@ export function AppShell({ children, currentMode, onModeChange }: AppShellProps)
           </div>
         </div>
 
-        <nav className="flex-1 p-4">
+        <nav className="flex-1 p-4 overflow-y-auto">
           <div className="space-y-1">
             <p className="px-3 py-2 text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
               Scan Modes
@@ -63,11 +81,22 @@ export function AppShell({ children, currentMode, onModeChange }: AppShellProps)
             <p className="px-3 py-2 text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
               Saved Scans
             </p>
-            <div className="px-3 py-4">
-              <p className="text-xs text-sidebar-foreground/50 italic">
-                Coming soon
-              </p>
-            </div>
+            <SavedScansPanel
+              savedScans={savedScans}
+              onLoadProfile={onLoadProfile}
+              onDeleteProfile={onDeleteProfile}
+            />
+          </div>
+
+          <div className="mt-8 pt-8 border-t border-sidebar-border">
+            <p className="px-3 py-2 text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
+              Watchlist
+            </p>
+            <WatchlistPanel
+              items={watchlist}
+              onSelect={onSelectWatchlistItem}
+              onRemove={onRemoveWatchlistItem}
+            />
           </div>
         </nav>
 
