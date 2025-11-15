@@ -160,7 +160,7 @@ export function ScanDetailDrawer({
           <Card className="p-5">
             <div className="flex items-start gap-3">
               <Target className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-              <div>
+              <div className="flex-1">
                 <h3 className="font-semibold text-foreground mb-2">Catalyst Summary</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   {result.catalystSummary}
@@ -168,6 +168,36 @@ export function ScanDetailDrawer({
               </div>
             </div>
           </Card>
+
+          {/* Latest News/Catalyst (if available) */}
+          {result.primaryNewsHeadline && (
+            <Card className="p-5 bg-accent/20 border-primary/20">
+              <div className="flex items-start gap-3">
+                <MessageSquare className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-foreground mb-2">Latest Catalyst / News</h3>
+                  <a
+                    href={result.primaryNewsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium text-primary hover:underline leading-relaxed block mb-2"
+                  >
+                    {result.primaryNewsHeadline}
+                  </a>
+                  {result.primaryNewsDatetime && (
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(result.primaryNewsDatetime).toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
 
           {/* Risk Notes */}
           <Card className="p-5 border-destructive/20 bg-destructive/5">

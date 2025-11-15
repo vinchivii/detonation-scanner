@@ -44,6 +44,10 @@ export interface ScanResult {
   riskNotes: string;
   whyItMightMove: string;
   tags: string[];
+  // Optional news/catalyst fields (populated in live mode)
+  primaryNewsHeadline?: string;
+  primaryNewsUrl?: string;
+  primaryNewsDatetime?: string; // ISO string
 }
 
 export const SECTORS = ['Technology', 'Biotech', 'Energy', 'Defense', 'Retail', 'Finance', 'Healthcare', 'Industrial', 'Materials', 'Communications'];
