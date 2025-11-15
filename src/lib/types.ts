@@ -61,3 +61,26 @@ export const SCAN_MODE_DESCRIPTIONS: Record<ScanMode, string> = {
   'cmbm-style': 'Low float, high squeeze potential stocks with parabolic setup characteristics',
   'momentum': 'Stocks showing strong technical momentum and sustained trend strength',
 };
+
+/**
+ * Saved Scan Profile - stores scan configurations for quick reuse
+ */
+export interface SavedScanProfile {
+  id: string;
+  name: string;
+  description?: string;
+  mode: ScanMode;
+  filters: ScanFilters;
+  notes?: string;
+  createdAt: string;
+}
+
+/**
+ * Watchlist Item - stores snapshots of scan results for tracking
+ */
+export interface WatchlistItem {
+  id: string;
+  fromScanMode: ScanMode;
+  addedAt: string;
+  result: ScanResult;
+}
