@@ -3,6 +3,7 @@ import { Activity, BarChart3, TrendingUp, Zap } from 'lucide-react';
 import { ScanMode, SCAN_MODE_LABELS, SavedScanProfile, WatchlistItem } from '@/lib/types';
 import { SavedScansPanel } from '@/components/scan/SavedScansPanel';
 import { WatchlistPanel } from '@/components/scan/WatchlistPanel';
+import { EngineStatus } from '@/components/system/EngineStatus';
 import { cn } from '@/lib/utils';
 
 interface AppShellProps {
@@ -121,6 +122,7 @@ export function AppShell({
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <EngineStatus />
               <div className="text-right">
                 <p className="text-xs text-muted-foreground">Market Status</p>
                 <p className="text-sm font-semibold text-success">Live</p>

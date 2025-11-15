@@ -4,10 +4,13 @@ import { ScanControls } from '@/components/scan/ScanControls';
 import { ScanSummaryBar } from '@/components/scan/ScanSummaryBar';
 import { ScanResultsTable } from '@/components/scan/ScanResultsTable';
 import { ScanDetailDrawer } from '@/components/scan/ScanDetailDrawer';
+import { Button } from '@/components/ui/button';
 import { ScanMode, ScanFilters, ScanResult, ScanRequest, SavedScanProfile, WatchlistItem } from '@/lib/types';
 import { runScan } from '@/lib/scanEngine';
 import { storage } from '@/lib/storage';
+import { exportScanResultsToCsv, downloadCsv, generateTimestampedFilename } from '@/lib/export';
 import { toast } from '@/hooks/use-toast';
+import { Download } from 'lucide-react';
 
 const Index = () => {
   const [scanMode, setScanMode] = useState<ScanMode>('daily-volatility');
@@ -189,6 +192,35 @@ const Index = () => {
     ? watchlist.some(w => w.result.ticker === selectedResult.ticker)
     : false;
 
+  // Handle CSV export
+  const handleExportCsv = () => {
+    if (results.length === 0) {
+      toast({
+        title: 'No Data to Export',
+        description: 'Run a scan first to generate results for export',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const csv = exportScanResultsToCsv(results);
+      const filename = generateTimestampedFilename('detonation-scan', 'csv');
+      downloadCsv(csv, filename);
+
+      toast({
+        title: 'Export Successful',
+        description: `Downloaded ${results.length} results as ${filename}`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Export Failed',
+        description: 'An error occurred while exporting data',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <AppShell 
       currentMode={scanMode} 
@@ -218,11 +250,26 @@ const Index = () => {
           lastRunAt={lastRunAt}
         />
 
-        <ScanResultsTable
-          results={results}
-          onSelectResult={setSelectedResult}
-          isLoading={isScanning}
-        />
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-foreground">Scan Results</h2>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCsv}
+              disabled={results.length === 0}
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export CSV
+            </Button>
+          </div>
+
+          <ScanResultsTable
+            results={results}
+            onSelectResult={setSelectedResult}
+            isLoading={isScanning}
+          />
+        </div>
       </div>
 
       <ScanDetailDrawer 
